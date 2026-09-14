@@ -17,15 +17,43 @@ HYPR_DIR="$HOME/.local/state/omarchy/toggles/hypr"
 STATE="$HOME/.local/state/macifier"
 
 # name|kind|description
-# kind: hypr = a Lua fragment in the toggle dir; bar = an Omarchy bar widget
+# kind: hypr = a Lua fragment in the toggle dir
+#       bar  = an Omarchy bar widget (edits shell.json, needs revert state)
+#       root = a system file outside $HOME (needs privilege; see priv())
 OPTIONS=(
   "scroll|hypr|Trackpad scrolls in the macOS direction"
   "capslock|hypr|Caps Lock works as Caps Lock, not Compose"
+  "mediakeys|root|F1-F12 do brightness/volume directly, Fn for F-keys"
   "windowtitle|bar|Focused window's name shown in the bar"
 )
 
-MINIMAL=(scroll capslock)
-FULL=(scroll capslock windowtitle)
+MINIMAL=(scroll capslock mediakeys)
+FULL=(scroll capslock mediakeys windowtitle)
+
+FNMODE_PARAM="/sys/module/hid_apple/parameters/fnmode"
+FNMODE_TMPFILE="/etc/tmpfiles.d/macifier-fnmode.conf"
+
+# An option can be inapplicable rather than merely off — mediakeys means
+# nothing without an Apple keyboard. Reported separately so the panel can grey
+# the switch and say why, instead of offering a control that would do nothing.
+opt_available() {
+  case "$1" in
+    mediakeys) [[ -e $FNMODE_PARAM ]] ;;
+    *) true ;;
+  esac
+}
+
+# Root is needed only by `root`-kind options. A terminal gets sudo, which can
+# explain itself and reuse a cached credential; a panel click has nowhere to
+# type a password, so it gets pkexec's dialog.
+#
+# TODO: this is the first option to need privilege and it will not be the last.
+# A general pattern (a narrow NOPASSWD sudoers entry, as Omarchy already ships
+# for asdcontrol and omarchy-dns) is likely the right answer once there are
+# two or three of these. Revisit before adding the next one.
+priv() {
+  if [[ -t 0 ]]; then sudo "$@"; else pkexec "$@"; fi
+}
 
 opt_kind() { local n="$1"; for o in "${OPTIONS[@]}"; do [[ ${o%%|*} == "$n" ]] && { IFS='|' read -r _ k _ <<<"$o"; echo "$k"; return; }; done; return 1; }
 opt_desc() { local n="$1"; for o in "${OPTIONS[@]}"; do [[ ${o%%|*} == "$n" ]] && { IFS='|' read -r _ _ d <<<"$o"; echo "$d"; return; }; done; }
@@ -38,7 +66,25 @@ is_on() {
   case "$(opt_kind "$n")" in
     hypr) [[ -f "$HYPR_DIR/macifier-$n.lua" ]] ;;
     bar)  [[ -f "$STATE/$n" ]] ;;
+    root) [[ -f $FNMODE_TMPFILE ]] ;;
   esac
+}
+
+# --- mediakeys ---------------------------------------------------------------
+# hid_apple.fnmode: 1 = media keys primary (macOS), 2 = F-keys primary
+# (Omarchy's default). The module is loaded from the initramfs, so modprobe.d
+# would need mkinitcpio -P on every flip; a tmpfiles.d line re-applies the value
+# on each boot instead, and removing the file is the whole revert.
+mediakeys_on() {
+  mkdir -p "$STATE"
+  [[ -f "$STATE/mediakeys.prior" ]] || cat "$FNMODE_PARAM" > "$STATE/mediakeys.prior" 2>/dev/null || echo 2 > "$STATE/mediakeys.prior"
+  priv /bin/sh -c "printf '%s\n' 'w $FNMODE_PARAM - - - - 1' > '$FNMODE_TMPFILE' && printf 1 > '$FNMODE_PARAM'"
+}
+
+mediakeys_off() {
+  local prior; prior="$(cat "$STATE/mediakeys.prior" 2>/dev/null || echo 2)"
+  priv /bin/sh -c "rm -f '$FNMODE_TMPFILE' && printf '%s' '$prior' > '$FNMODE_PARAM'"
+  rm -f "$STATE/mediakeys.prior"
 }
 
 # --- the one option that touches state we do not own -------------------------
@@ -75,6 +121,7 @@ option_on() {
   case "$(opt_kind "$n")" in
     hypr) mkdir -p "$HYPR_DIR"; cp "$SHARE/options/$n.lua" "$HYPR_DIR/macifier-$n.lua"; reload ;;
     bar)  bar_on ;;
+    root) mediakeys_on ;;
   esac
 }
 
@@ -83,12 +130,14 @@ option_off() {
   case "$(opt_kind "$n")" in
     hypr) rm -f "$HYPR_DIR/macifier-$n.lua"; reload ;;
     bar)  bar_off ;;
+    root) mediakeys_off ;;
   esac
 }
 
 set_option() {
   local n="$1" action="${2:-toggle}"
   opt_kind "$n" >/dev/null || { echo "unknown option: $n" >&2; exit 1; }
+  opt_available "$n" || { echo "option not applicable on this hardware: $n" >&2; exit 1; }
   case "$action" in
     on)     option_on  "$n" ;;
     off)    option_off "$n" ;;
@@ -109,6 +158,7 @@ apply_preset() {
   while read -r n; do
     keep=no
     for w in ${wanted[@]+"${wanted[@]}"}; do [[ $w == "$n" ]] && keep=yes; done
+    opt_available "$n" || continue
     if [[ $keep == yes ]]; then is_on "$n" || option_on "$n"
     else is_on "$n" && option_off "$n" || true; fi
   done < <(opt_names)
@@ -120,9 +170,13 @@ current_preset() {
   local on=() n
   while read -r n; do is_on "$n" && on+=("$n"); done < <(opt_names)
   [[ ${#on[@]} -eq 0 ]] && { echo off; return; }
-  local joined="${on[*]}"
-  [[ $joined == "${MINIMAL[*]}" ]] && { echo minimal; return; }
-  [[ $joined == "${FULL[*]}" ]] && { echo full; return; }
+  local joined="${on[*]}" want
+  for preset in minimal full; do
+    want=""
+    local -n arr="${preset^^}"
+    for w in "${arr[@]}"; do opt_available "$w" && want+="${want:+ }$w"; done
+    [[ $joined == "$want" ]] && { echo "$preset"; return; }
+  done
   echo custom
 }
 
@@ -132,7 +186,9 @@ status_json() {
   while read -r n; do
     [[ $first -eq 1 ]] || printf ','
     first=0
-    printf '"%s":%s' "$n" "$(is_on "$n" && echo true || echo false)"
+    printf '"%s":{"on":%s,"available":%s}' "$n" \
+      "$(is_on "$n" && echo true || echo false)" \
+      "$(opt_available "$n" && echo true || echo false)"
   done < <(opt_names)
   printf '}}\n'
 }
@@ -142,7 +198,11 @@ status_text() {
   echo "macifier: $p"
   local n
   while read -r n; do
-    printf '  [%s] %-12s %s\n' "$(is_on "$n" && echo x || echo ' ')" "$n" "$(opt_desc "$n")"
+    if opt_available "$n"; then
+      printf '  [%s] %-12s %s\n' "$(is_on "$n" && echo x || echo ' ')" "$n" "$(opt_desc "$n")"
+    else
+      printf '  [-] %-12s %s (not applicable on this hardware)\n' "$n" "$(opt_desc "$n")"
+    fi
   done < <(opt_names)
 }
 

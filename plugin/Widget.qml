@@ -25,21 +25,23 @@ Panel {
   property var opts: ({})
   property string preset: "off"
   readonly property bool anyOn: {
-    for (var k in opts) if (opts[k]) return true
+    for (var k in opts) if (opts[k] && opts[k].on) return true
     return false
   }
 
   readonly property var labels: ({
     "scroll":      "Natural scrolling",
     "capslock":    "Caps Lock key",
+    "mediakeys":   "Media keys on F1-F12",
     "windowtitle": "Window name in bar"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
     "capslock":    "Caps Lock works, Compose moves to right ⌘",
+    "mediakeys":   "Brightness and volume direct · asks for your password",
     "windowtitle": "Show the focused window's name"
   })
-  readonly property var order: ["scroll", "capslock", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "windowtitle"]
 
   function refresh() { if (!stateProc.running) stateProc.running = true }
 
@@ -196,7 +198,12 @@ Panel {
           }
 
           ToggleSwitch {
-            checked: root.opts[modelData] === true
+            readonly property var entry: root.opts[modelData]
+            checked: entry !== undefined && entry.on === true
+            // An option the hardware cannot support is shown greyed rather than
+            // hidden, so its absence is explained instead of mysterious.
+            interactive: entry !== undefined && entry.available === true
+            opacity: interactive ? 1.0 : 0.4
             onToggled: root.run(["option", modelData, checked ? "off" : "on"])
           }
         }

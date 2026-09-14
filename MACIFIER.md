@@ -63,7 +63,18 @@ state you get stuck in — flip any single option afterwards and the rest stay p
 |---|---|:---:|:---:|
 | `scroll` | Trackpad scrolls the macOS way | ● | ● |
 | `capslock` | Caps Lock works; Compose moves to right ⌘ | ● | ● |
+| `mediakeys` | F1–F12 do brightness/volume directly, Fn for F-keys † | ● | ● |
 | `windowtitle` | Focused window's name shown in the bar | | ● |
+
+† **`mediakeys` is the one option that needs your password.** Everything else lives
+entirely in `$HOME`; this one sets a kernel module parameter (`hid_apple.fnmode`), which
+is root-owned. Macifier installs a single file it owns —
+`/etc/tmpfiles.d/macifier-fnmode.conf` — so the value is re-applied at every boot, and
+turning the option off deletes that file and restores the previous value. It is skipped
+automatically on hardware without an Apple keyboard.
+
+The heavier alternative, a `modprobe.d` drop-in, was rejected: `hid_apple` loads from the
+initramfs, so every flip would need `mkinitcpio -P`.
 
 **Minimal** is the safe set: things a switcher notices in the first minute, none of which
 can break anything. **Full** is the ambition — "be on a Mac, in Linux" — and will take a
