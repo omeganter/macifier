@@ -1,253 +1,81 @@
 # Macifier
 
-**An opt-in, fully reversible Mac-affinity mode for [Omarchy](https://omarchy.org/).**
+Makes Omarchy feel like a Mac. One switch, fully reversible.
 
-One switch that makes Omarchy feel familiar to someone arriving from macOS — and one
-click that puts everything back exactly as it was.
-
-> **Unofficial, early, and opinionated — deliberately so.**
-> This is not an Omarchy project and is not affiliated with or endorsed by Omarchy or its
-> maintainers. It is an independent experiment by a Mac switcher, built in the open while
-> the switching is still fresh enough to remember what was confusing.
->
-> **Opinions and contributions are very welcome** — especially disagreement. If a default
-> here is wrong, if something belongs in Minimal that isn't, or if an option breaks on your
-> hardware, open an issue. Arguments about what *should* be in it are as useful as code.
-
----
-
-## Why
-
-Omarchy is opinionated by design, and its defaults are good ones. But a Mac switcher's
-first hour is spent colliding with small, invisible differences: the trackpad scrolls
-the wrong way, the keybinding menu names keys that aren't printed on the keyboard, and
-no window says what it is. None of these are bugs. Each is a deliberate choice that
-happens to be wrong for one specific audience — people whose muscle memory was trained
-somewhere else.
-
-Experienced Linux users fix these in minutes and never think about them again. Newcomers
-don't know the settings exist, don't know what to search for, and often conclude the
-system is broken. That gap is what Macifier addresses.
-
-**The pitch is "make the first hour familiar," not "turn Omarchy into macOS."** The
-opinion stays the default. The switcher gets a ramp.
-
-### Two goals, one switch
-
-Macifier serves two people, and the mode system is what lets it serve both without
-compromising for either:
-
-**Reduce the initial friction.** Most switchers do not want macOS back. They want to stop
-tripping over small invisible differences long enough to actually learn the system —
-then they keep whatever they have grown to prefer and drop the rest. For them Macifier is
-a ramp, used for a week or a month and then partly or wholly switched off. **Minimal** is
-built for exactly this: the handful of things you hit in the first minute, nothing that
-could break, everything reversible.
-
-**Give the full Mac experience to those who want it.** Others genuinely want to be on a
-Mac, in Linux — because their hands will not be retrained, because they move between a
-Mac and this machine daily, or simply because they prefer it. That is a legitimate want
-and not a lesser one. **Full** is for them. It is a much larger job — window management,
-key semantics, system gestures — and it will take a long time and more than one pair of
-hands.
-
-Nobody has to pick a camp. Options are independent, so the ramp user can keep the two
-things they liked, and the full-experience user can leave out the one thing they hate.
-
-## What it does
-
-Every option is **independent**. Presets are shorthand for a group of them, never a
-state you get stuck in — flip any single option afterwards and the rest stay put.
-
-| Option | What it changes | Minimal | Full |
-|---|---|:---:|:---:|
-| `scroll` | Trackpad scrolls the macOS way | ● | ● |
-| `capslock` | Caps Lock works; Compose moves to right ⌘ | ● | ● |
-| `mediakeys` | F1–F12 do brightness/volume directly, Fn for F-keys † | ● | ● |
-| `windowtitle` | Focused window's name shown in the bar | | ● |
-| `cmdkeys` | Command-key shortcuts — **configurable key by key** | | ● |
-
-† **`mediakeys` is the one option that needs your password.** Everything else lives
-entirely in `$HOME`; this one sets a kernel module parameter (`hid_apple.fnmode`), which
-is root-owned. Macifier installs a single file it owns —
-`/etc/tmpfiles.d/macifier-fnmode.conf` — so the value is re-applied at every boot, and
-turning the option off deletes that file and restores the previous value. It is skipped
-automatically on hardware without an Apple keyboard.
-
-The heavier alternative, a `modprobe.d` drop-in, was rejected: `hid_apple` loads from the
-initramfs, so every flip would need `mkinitcpio -P`.
-
-**Minimal** is the safe set: things a switcher notices in the first minute, none of which
-can break anything. **Full** is the ambition — "be on a Mac, in Linux" — and will take a
-long time. It grows as options prove themselves, and it is the natural place for
-contributors to add work.
-
-### On Command-key shortcuts
-
-**Copy and paste already work and are not Macifier's doing.** Omarchy ships `SUPER+C/V/X`
-as Universal copy/paste/cut in `default/hypr/bindings/clipboard.lua`, and they are already
-terminal-aware — in a terminal they send `Ctrl+Insert`/`Shift+Insert` instead, so copy does
-not collide with SIGINT. `SUPER+W` is Close window, matching ⌘W. Credit where it is due.
-
-`cmdkeys` extends that to the rest of the editing set, and only claims letters Omarchy
-leaves free, so **nothing is taken away**: A B D E I N R U Y Z, plus ⇧Z for redo and
-⌘Q for close.
-
-In terminals these deliberately do **nothing**. Ctrl+Z suspends the foreground job, Ctrl+D
-closes the shell, Ctrl+A is beginning-of-line — sending those would be destructive. macOS
-has the same split (⌘A is the terminal's select-all, Ctrl+A is readline), but we cannot
-deliver the ⌘ half, so doing nothing beats doing the wrong thing.
-
-### The keybinding editor
-
-`cmdkeys` is not all-or-nothing. Open the panel, press **Edit** beside it, and every
-Command key is listed with its own switch — so you can take ⌘F and leave ⌘T, or start from
-a preset and adjust. Three presets seed the list:
-
-| Preset | Claims |
-|---|---|
-| **None** | nothing |
-| **Minimal** | only letters Omarchy leaves free — costs nothing |
-| **Full Mac** | every letter, including eight that hold window shortcuts |
-
-Full Mac is **the setting that takes something away**, and the editor says so before you
-pick it. Those eight letters (F S T P G L K O) move their window-management shortcuts to
-**⌃⌥ + the same letter**:
-
-| Was | Now | Does |
-|---|---|---|
-| `SUPER+F` | `CTRL+ALT+F` | Full screen |
-| `SUPER+S` | `CTRL+ALT+S` | Toggle scratchpad |
-| `SUPER+T` | `CTRL+ALT+T` | Float/tile toggle |
-| `SUPER+O` | `CTRL+ALT+O` | Pop window out |
-| `SUPER+P` `SUPER+G` `SUPER+L` `SUPER+K` | `CTRL+ALT+…` | Pseudo, Grouping, Layout, Keybindings |
-
-`CTRL+ALT` was chosen because the entire namespace is empty in stock Omarchy, so nothing
-collides and every displaced shortcut keeps its own letter. `SUPER+ALT` was rejected: F, G,
-K and S already hold sibling functions there, so four of the eight would have needed
-renaming. `SUPER+J` (window split) is left alone — ⌘J is rare enough that displacing a
-working shortcut is not worth it.
-
-With Full Mac, every Command-key shortcut a Mac user reaches for works, and window
-management is one extra modifier away. Each row in the editor names what it would displace,
-so nothing is lost by surprise.
-
-The Lua fragment is **generated** from the enabled set on every change, rather than copied
-from a static file like the other options — which is what makes per-key control possible.
-Open the editor straight from a keybinding or menu entry with:
-
-```bash
-qs -p /usr/share/omarchy/shell ipc call local.macifier keys
-```
-
-Planned, not yet built: keybinding menu showing Command / Option / Control instead of
-SUPER / ALT / CTRL; onboarding note that folders bookmark and files star.
-
-## Why it is reversible
-
-Reversibility is the entire claim, so it is enforced structurally rather than promised:
-
-- **Nothing is written into `/usr/share/omarchy/`.** That directory belongs to the
-  package and is overwritten on update.
-- **Nothing is written into `~/.config/hypr/*.lua`.** Those files belong to the user. A
-  mode that edits them cannot be cleanly removed.
-- Settings live in a **single file** in Omarchy's own toggle directory,
-  `~/.local/state/omarchy/toggles/hypr/macifier.lua`. Omarchy sources that directory
-  *last*, after the user's own config, so the fragment wins without touching anything.
-  **Deleting the file reverts everything in it.** That is the whole mechanism.
-
-Test for any future addition: `on` → `off` → every touched file byte-identical to before.
-If an item can't meet that, it doesn't go in.
-
-## Install
+Unofficial. Not affiliated with Omarchy. Opinions and pull requests welcome,
+including "that default is wrong".
 
 ```bash
 ./install.sh
-omarchy plugin enable local.macifier right   # first time only
+omarchy plugin enable local.macifier right
 omarchy restart shell
 ```
 
-## Use
-
-Click ` Macifier` in the bar to open the options panel: presets across the top, and a
-switch per option with a one-line explanation of what each does. Everything can be turned
-on or off individually from there.
-
-When anything is on the widget shows the Apple glyph and names itself; when everything is
-off the glyph dims and the label disappears. The name is deliberate — an unlabelled glyph
-is a puzzle, and a visible name answers both "what is changing my machine?" and "how do I
-stop it?" without anyone having to go looking.
-
-From the terminal:
-
-```bash
-omarchy-macifier status                     # what is on
-omarchy-macifier preset minimal|full|off    # a named set
-omarchy-macifier option scroll on|off       # one option
-omarchy-macifier list                       # available options
-```
-
-The panel is also reachable over IPC, so it can be bound to a key or a menu entry:
-
-```bash
-qs -p /usr/share/omarchy/shell ipc call local.macifier toggle
-```
-
-## Layout
-
-```
-bin/omarchy-macifier    → ~/.local/bin/              CLI, single source of truth for state
-hypr/options/*.lua      → ~/.local/share/macifier/options/   one fragment per option
-plugin/                 → ~/.config/omarchy/plugins/macifier/   bar widget + options panel
-docs/PLAN.md            implementation plan, phases, risks, open questions
-docs/FRICTION-LOG.md    the newcomer-friction findings this project came out of
-```
-
-The panel owns no state. It reads `omarchy-macifier status --json` and calls back into the
-CLI, so the bar, the panel and the terminal can never disagree about what is on.
-
-Adding an option means: a fragment in `hypr/options/`, one line in the `OPTIONS` table in
-the CLI, and a label in `Widget.qml`. Options that are not Hyprland config (like
-`windowtitle`, which edits the bar layout) declare a different `kind` and get explicit
-apply/revert functions.
+Then click ` Macifier` in the bar and pick what you want.
 
 ---
 
-## First success — 2026-09-14
+## Options
 
-**A working, reversible toggle, built and verified in a day.**
+| Option | Does | Minimal | Full |
+|---|---|:---:|:---:|
+| `scroll` | Trackpad scrolls the macOS way | ● | ● |
+| `capslock` | Caps Lock works. Compose moves to right ⌘ | ● | ● |
+| `mediakeys` | F1–F12 do brightness and volume. Asks for your password | ● | ● |
+| `cmdkeys` | ⌘A ⌘Z ⌘F ⌘S and the rest | | ● |
+| `windowtitle` | Focused window's name in the bar | | ● |
 
-Phase 0 is complete. `omarchy-macifier on` flips trackpad scrolling to macOS direction and
-lights up a self-naming control in the bar; `off` removes the fragment and restores stock
-behaviour. The round trip was verified at the setting level (`natural_scroll: false → true
-→ false`) and visually, by screen capture, in both states.
+Options are independent. Presets just set a group, so you can flip any one
+afterwards and the rest stay put.
 
-Three things made it work, each verified rather than assumed:
+**Minimal** is a ramp. It fixes what you trip over in the first minute and takes
+nothing away. Most people use it for a week, keep what they liked, drop the rest.
 
-1. **Omarchy sources its toggle directory last.** `~/.config/hypr/hyprland.lua` requires
-   `default.hypr.toggles` *after* the user's own files, so a fragment there overrides
-   everything without editing a single file the user owns. This is what makes clean
-   reversibility possible at all.
-2. **Third-party bar widgets need no git repo.** A plain folder in
-   `~/.config/omarchy/plugins/` with a `manifest.json` and a `.qml` is discovered
-   automatically, validates, and registers as `third-party` — arriving *disabled*, so
-   nothing appears until it is enabled. Authoring is fully local; `plugin add <git-url>`
-   is for distribution, not development.
-3. **Omarchy already had the mechanism.** `omarchy hyprland toggle` and `omarchy toggle`
-   existed before this project. Macifier invents no architecture — it adds a file to a
-   folder that was already there. That is the strongest argument for it upstream.
+**Full** is for people who want a Mac in Linux and are not going to retrain their
+hands. That is a real want, not a lesser one.
 
-Along the way, one upstream contribution was made: a comment on
-[omacom/omarchy#7174](https://github.com/omacom/omarchy/issues/7174) documenting a second
-symptom of a known window-handoff bug, found while tracing why the first agent window
-floats when every later one tiles.
+## Keybindings
 
-**Still unproven:** whether any of this is actually *better*. The mechanism works; whether
-macOS-direction scrolling still feels right after a week is the only thing that decides
-what goes into Phase 2. That question can't be answered by building more.
+⌘C ⌘V ⌘X ⌘W already work. Omarchy ships those, terminals included. `cmdkeys`
+adds the rest.
 
-### Gotchas recorded so far
-- Editing a plugin's `.qml` does **not** hot-reload. `shell.json` changes do; QML needs
-  `omarchy restart shell`.
-- `omarchy-hyprland-toggle` copies its source from `$OMARCHY_PATH`, which is read-only, so
-  a locally-developed flag has to manage its own state file. Hence the custom CLI.
+Press **Edit** in the panel to switch keys one at a time. Two presets:
+
+- **Minimal** — only keys Omarchy leaves free. Nothing is taken away.
+- **Full Mac** — also takes ⌘F ⌘S ⌘T ⌘O ⌘P ⌘G ⌘L ⌘K. The window shortcuts on
+  those letters move to ⌃⌥ + the same letter, so ⌃⌥F is full screen.
+
+Every row says what it would displace before you turn it on.
+
+In terminals these do nothing. Ctrl+Z suspends a job, Ctrl+D closes the shell.
+Sending those would be worse than doing nothing.
+
+## Reverting
+
+Nothing is written to `/usr/share/omarchy` or `~/.config/hypr`. Each option is
+one file in `~/.local/state/omarchy/toggles/hypr/`, which Omarchy loads last.
+Deleting the file undoes it.
+
+`mediakeys` is the exception. It sets a kernel parameter, so it installs
+`/etc/tmpfiles.d/macifier-fnmode.conf`. Turning it off deletes that file and
+puts the old value back.
+
+Test for anything new: `on`, `off`, every touched file byte-identical.
+
+## CLI
+
+```bash
+omarchy-macifier status
+omarchy-macifier preset minimal|full|off
+omarchy-macifier option scroll on|off
+omarchy-macifier key F off
+omarchy-macifier key preset minimal|full|none
+```
+
+## Next
+
+⌘Tab app switcher with an app bar. Designed in [docs/PLAN.md](docs/PLAN.md),
+not built. Good first contribution.
+
+[docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) lists the Omarchy newcomer
+problems this came out of.
