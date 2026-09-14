@@ -65,6 +65,7 @@ state you get stuck in — flip any single option afterwards and the rest stay p
 | `capslock` | Caps Lock works; Compose moves to right ⌘ | ● | ● |
 | `mediakeys` | F1–F12 do brightness/volume directly, Fn for F-keys † | ● | ● |
 | `windowtitle` | Focused window's name shown in the bar | | ● |
+| `cmdkeys` | ⌘A, ⌘Z, ⌘N, ⌘R, ⌘Q and the rest of the Mac editing set | | ● |
 
 † **`mediakeys` is the one option that needs your password.** Everything else lives
 entirely in `$HOME`; this one sets a kernel module parameter (`hid_apple.fnmode`), which
@@ -81,10 +82,30 @@ can break anything. **Full** is the ambition — "be on a Mac, in Linux" — and
 long time. It grows as options prove themselves, and it is the natural place for
 contributors to add work.
 
+### On Command-key shortcuts
+
+**Copy and paste already work and are not Macifier's doing.** Omarchy ships `SUPER+C/V/X`
+as Universal copy/paste/cut in `default/hypr/bindings/clipboard.lua`, and they are already
+terminal-aware — in a terminal they send `Ctrl+Insert`/`Shift+Insert` instead, so copy does
+not collide with SIGINT. `SUPER+W` is Close window, matching ⌘W. Credit where it is due.
+
+`cmdkeys` extends that to the rest of the editing set, and only claims letters Omarchy
+leaves free, so **nothing is taken away**: A B D E I N R U Y Z, plus ⇧Z for redo and
+⌘Q for close.
+
+In terminals these deliberately do **nothing**. Ctrl+Z suspends the foreground job, Ctrl+D
+closes the shell, Ctrl+A is beginning-of-line — sending those would be destructive. macOS
+has the same split (⌘A is the terminal's select-all, Ctrl+A is readline), but we cannot
+deliver the ⌘ half, so doing nothing beats doing the wrong thing.
+
+**Seven letters are deliberately left alone:** F S T P L G K currently hold window
+management (Full screen, Scratchpad, Float toggle, Pseudo, Layout, Grouping, Keybindings).
+Reclaiming those for ⌘F Find, ⌘S Save and so on means *moving* WM shortcuts, which is a
+real cost a user should be able to refuse. That belongs in its own option, not smuggled
+into this one. Not built yet.
+
 Planned, not yet built: keybinding menu showing Command / Option / Control instead of
-SUPER / ALT / CTRL; onboarding note that folders bookmark and files star. Deliberately
-**out** for now: Cmd-based copy/paste — terminals, Chromium and TUI apps each handle
-`SUPER+C/V` differently, and breaking copy/paste would discredit the whole idea.
+SUPER / ALT / CTRL; onboarding note that folders bookmark and files star.
 
 ## Why it is reversible
 

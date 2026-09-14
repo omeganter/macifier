@@ -25,10 +25,11 @@ OPTIONS=(
   "capslock|hypr|Caps Lock works as Caps Lock, not Compose"
   "mediakeys|root|F1-F12 do brightness/volume directly, Fn for F-keys"
   "windowtitle|bar|Focused window's name shown in the bar"
+  "cmdkeys|hypr|Command+A/Z/N/R and the rest of the Mac editing set"
 )
 
 MINIMAL=(scroll capslock mediakeys)
-FULL=(scroll capslock mediakeys windowtitle)
+FULL=(scroll capslock mediakeys windowtitle cmdkeys)
 
 FNMODE_PARAM="/sys/module/hid_apple/parameters/fnmode"
 FNMODE_TMPFILE="/etc/tmpfiles.d/macifier-fnmode.conf"
