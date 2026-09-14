@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "local.macifier-dock",
+  "name": "Macifier dock",
+  "version": "0.1.0",
+  "author": "kolyk",
+  "license": "MIT",
+  "description": "Auto-hiding macOS-style dock of favourite and running apps.",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "Dock.qml" }
+}

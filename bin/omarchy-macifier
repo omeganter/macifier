@@ -27,10 +27,79 @@ OPTIONS=(
   "windowtitle|bar|Focused window's name shown in the bar"
   "cmdkeys|keys|Command-key shortcuts (configurable key by key)"
   "appswitcher|switcher|Command+Tab switches apps, not workspaces"
+  "dock|dock|Auto-hiding dock of favourite apps along the bottom"
 )
 
+DOCKSET="$STATE/dock"
+
+# Seeded from what is actually installed rather than a fixed list, so the dock
+# is useful on first reveal instead of empty.
+dock_defaults() {
+  local want=(chromium org.gnome.Nautilus foot Discord omawrite)
+  local w
+  for w in "${want[@]}"; do
+    if [[ -f "/usr/share/applications/$w.desktop" || -f "$HOME/.local/share/applications/$w.desktop" ]]; then
+      echo "$w"
+    fi
+  done
+}
+
+dock_pinned() { [[ -f $DOCKSET ]] && cat "$DOCKSET" || true; }
+dock_is_pinned() { [[ -f $DOCKSET ]] && grep -qx "$1" "$DOCKSET"; }
+
+dock_set() {
+  local id="$1" action="${2:-toggle}"
+  mkdir -p "$STATE"; touch "$DOCKSET"
+  case "$action" in
+    add)    dock_is_pinned "$id" || echo "$id" >> "$DOCKSET" ;;
+    remove) grep -vx "$id" "$DOCKSET" > "$DOCKSET.tmp" 2>/dev/null || true; mv "$DOCKSET.tmp" "$DOCKSET" ;;
+    toggle) if dock_is_pinned "$id"; then dock_set "$id" remove; else dock_set "$id" add; fi ;;
+    *) echo "usage: omarchy-macifier dock <id> [add|remove|toggle]" >&2; exit 1 ;;
+  esac
+}
+
+# Every installed application, marked with whether it is on the dock. Feeds the
+# editor in the panel.
+dock_apps_json() {
+  python3 - "$DOCKSET" <<'PYEOF'
+import os, sys, glob, json
+pinned = []
+if len(sys.argv) > 1 and os.path.exists(sys.argv[1]):
+    pinned = [l.strip() for l in open(sys.argv[1]) if l.strip()]
+apps = {}
+for d in ("/usr/share/applications", os.path.expanduser("~/.local/share/applications")):
+    for f in glob.glob(os.path.join(d, "*.desktop")):
+        entry_id = os.path.basename(f)[:-8]
+        name, nodisplay, hidden = entry_id, False, False
+        try:
+            in_entry = False
+            for line in open(f, encoding="utf-8", errors="ignore"):
+                line = line.strip()
+                if line.startswith("["):
+                    in_entry = line == "[Desktop Entry]"
+                    continue
+                if not in_entry:
+                    continue
+                if line.startswith("Name=") and name == entry_id:
+                    name = line[5:]
+                elif line.startswith("NoDisplay="):
+                    nodisplay = line.split("=", 1)[1].strip().lower() == "true"
+                elif line.startswith("Hidden="):
+                    hidden = line.split("=", 1)[1].strip().lower() == "true"
+        except Exception:
+            pass
+        if nodisplay or hidden:
+            continue
+        apps[entry_id] = name
+rows = [{"id": k, "name": v, "pinned": k in pinned} for k, v in apps.items()]
+# Pinned first, in dock order, then everything else alphabetically.
+rows.sort(key=lambda r: (0, pinned.index(r["id"])) if r["pinned"] else (1, r["name"].lower()))
+print(json.dumps({"apps": rows}))
+PYEOF
+}
+
 MINIMAL=(scroll capslock mediakeys)
-FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher)
+FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher dock)
 
 # --- the Command-key table ---------------------------------------------------
 # letter|mac label|group|displaced Omarchy binding|Lua dispatcher for it
@@ -133,6 +202,7 @@ is_on() {
     root) [[ -f $FNMODE_TMPFILE ]] ;;
     keys) [[ -s $KEYSET ]] ;;
     switcher) [[ -f "$HYPR_DIR/macifier-appswitcher.lua" ]] ;;
+    dock) [[ -f "$STATE/dock.enabled" ]] ;;
   esac
 }
 
@@ -321,6 +391,11 @@ option_on() {
       omarchy plugin enable local.macifier-switcher >/dev/null 2>&1 || true
       cp "$SHARE/options/appswitcher.lua" "$HYPR_DIR/macifier-appswitcher.lua"
       reload ;;
+    dock)
+      mkdir -p "$STATE"
+      [[ -s $DOCKSET ]] || dock_defaults > "$DOCKSET"
+      touch "$STATE/dock.enabled"
+      omarchy plugin enable local.macifier-dock >/dev/null 2>&1 || true ;;
   esac
 }
 
@@ -335,6 +410,9 @@ option_off() {
       rm -f "$HYPR_DIR/macifier-appswitcher.lua"
       omarchy plugin disable local.macifier-switcher >/dev/null 2>&1 || true
       reload ;;
+    dock)
+      rm -f "$STATE/dock.enabled"
+      omarchy plugin disable local.macifier-dock >/dev/null 2>&1 || true ;;
   esac
 }
 
@@ -412,6 +490,14 @@ status_text() {
 
 case "${1:-status}" in
   option)  shift; set_option "${1:?option name required}" "${2:-toggle}" ;;
+  dock)    shift
+           case "${1:-}" in
+             apps)   dock_apps_json ;;
+             list)   dock_pinned ;;
+             reset)  mkdir -p "$STATE"; dock_defaults > "$DOCKSET" ;;
+             "")     dock_pinned ;;
+             *)      dock_set "$1" "${2:-toggle}" ;;
+           esac ;;
   key)     shift
            case "${1:-}" in
              preset) keys_preset "${2:?minimal|full|none}" ;;

@@ -12,6 +12,8 @@ install -Dm644 plugin/manifest.json "$HOME/.config/omarchy/plugins/macifier/mani
 install -Dm644 plugin/Widget.qml    "$HOME/.config/omarchy/plugins/macifier/Widget.qml"
 install -Dm644 plugin-switcher/manifest.json "$HOME/.config/omarchy/plugins/macifier-switcher/manifest.json"
 install -Dm644 plugin-switcher/Switcher.qml  "$HOME/.config/omarchy/plugins/macifier-switcher/Switcher.qml"
+install -Dm644 plugin-dock/manifest.json "$HOME/.config/omarchy/plugins/macifier-dock/manifest.json"
+install -Dm644 plugin-dock/Dock.qml      "$HOME/.config/omarchy/plugins/macifier-dock/Dock.qml"
 
 mkdir -p "$HOME/.local/share/macifier/options"
 install -m644 hypr/options/*.lua "$HOME/.local/share/macifier/options/"

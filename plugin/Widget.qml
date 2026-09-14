@@ -23,6 +23,7 @@ Panel {
   property var opts: ({})
   property string preset: "off"
   property var keys: []
+  property var dockApps: []
   property string keysPreset: "none"
   property string view: "main"
 
@@ -37,7 +38,8 @@ Panel {
     "mediakeys":   "Media keys on F1-F12",
     "cmdkeys":     "Command key shortcuts",
     "windowtitle": "Window name in bar",
-    "appswitcher": "⌘Tab switches apps"
+    "appswitcher": "⌘Tab switches apps",
+    "dock":        "Dock"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
@@ -45,13 +47,15 @@ Panel {
     "mediakeys":   "Brightness and volume direct · asks for your password",
     "cmdkeys":     "⌘A ⌘Z ⌘N ⌘Q … tap Edit to choose",
     "windowtitle": "Show the focused window's name",
-    "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces"
+    "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces",
+    "dock":        "Auto-hiding app bar along the bottom · tap Edit to choose"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "windowtitle"]
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
     if (!keysProc.running) keysProc.running = true
+    if (view === "dock" && !dockProc.running) dockProc.running = true
   }
 
   function run(args) {
@@ -97,6 +101,16 @@ Panel {
           root.keys = d.keys || []
           root.keysPreset = d.preset || "none"
         } catch (e) { }
+      }
+    }
+  }
+
+  Process {
+    id: dockProc
+    command: ["omarchy-macifier", "dock", "apps"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.dockApps = (JSON.parse(text).apps) || [] } catch (e) { }
       }
     }
   }
@@ -235,12 +249,15 @@ Panel {
             }
           }
 
-          // Only the Command-key option has anything to drill into.
+          // Two options have something to drill into.
           Button {
-            visible: modelData === "cmdkeys"
+            visible: modelData === "cmdkeys" || modelData === "dock"
             text: "Edit"
             bordered: true
-            onClicked: root.view = "keys"
+            onClicked: {
+              root.view = (modelData === "dock") ? "dock" : "keys"
+              root.refresh()
+            }
           }
 
           ToggleSwitch {
@@ -370,6 +387,76 @@ Panel {
       }
 
       }
+      }
+    }
+
+    // ---------------------------------------------------------------- dock --
+    ColumnLayout {
+      id: dockCol
+      width: parent.width
+      visible: root.view === "dock"
+      spacing: Style.space(10)
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(8)
+        Button { text: "\u2039  Back"; bordered: true; onClicked: root.view = "main" }
+        Item { Layout.fillWidth: true }
+        Button { text: "Reset"; bordered: true; onClicked: root.run(["dock", "reset"]) }
+      }
+
+      PanelSectionHeader { text: "Dock apps"; Layout.fillWidth: true }
+
+      Text {
+        Layout.fillWidth: true
+        textFormat: Text.PlainText
+        text: "Pinned apps stay on the dock. Anything running shows up anyway, "
+            + "with a dot under it."
+        color: Qt.darker(Color.foreground, 1.5)
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+
+      PanelSeparator { Layout.fillWidth: true }
+
+      ScrollView {
+        id: dockScroll
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.min(dockList.implicitHeight, Style.space(240))
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+        ColumnLayout {
+          id: dockList
+          width: dockScroll.availableWidth
+          spacing: Style.space(10)
+
+          Repeater {
+            model: root.dockApps
+            delegate: RowLayout {
+              required property var modelData
+              Layout.fillWidth: true
+              spacing: Style.space(8)
+
+              Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: modelData.name
+                color: Color.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+              }
+
+              ToggleSwitch {
+                checked: modelData.pinned === true
+                onToggled: root.run(["dock", modelData.id, checked ? "remove" : "add"])
+              }
+            }
+          }
+        }
       }
     }
   }

@@ -25,6 +25,7 @@ Then click ` Macifier` in the bar and pick what you want.
 | `cmdkeys` | ⌘A ⌘Z ⌘F ⌘S and the rest | | ● |
 | `windowtitle` | Focused window's name in the bar | | ● |
 | `appswitcher` | ⌘Tab switches apps, not workspaces, with an icon bar | | ● |
+| `dock` | Auto-hiding dock of favourite apps along the bottom | | ● |
 
 Options are independent. Presets just set a group, so you can flip any one
 afterwards and the rest stay put.
@@ -83,6 +84,20 @@ Workspace cycling moves to ⌘⌥Tab. Nothing is removed.
 The release is read by the overlay, not by a Hyprland bind: Hyprland's
 modifier-release bind is swallowed once another bind fires during the hold, and
 Tab always does. The overlay takes exclusive keyboard focus and sees the event.
+
+## Dock
+
+Auto-hides at the bottom. Push the pointer to the bottom edge and it slides up.
+Pinned apps first, then anything running, with a dot under what is open. Click
+to launch, or to raise it if it is already running.
+
+Press **Edit** beside Dock in the panel to choose what is pinned, or:
+
+```bash
+omarchy-macifier dock list
+omarchy-macifier dock chromium add|remove
+omarchy-macifier dock reset
+```
 
 ## Next
 
