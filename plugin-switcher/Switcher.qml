@@ -44,7 +44,10 @@ Item {
 
   function commit() {
     if (opened && apps.length > 0 && index >= 0 && index < apps.length) {
-      focusProc.command = ["hyprctl", "dispatch", "focuswindow", "address:" + apps[index].address]
+      // Omarchy's hyprctl parses `dispatch` as Lua, so the plain
+      // `focuswindow address:0x…` form is a syntax error, not a no-op.
+      focusProc.command = ["hyprctl", "dispatch",
+        "hl.dsp.focus({ window = 'address:" + apps[index].address + "' })"]
       focusProc.running = true
     }
     close()
@@ -156,6 +159,7 @@ Item {
     function next(): void { root.advance(1) }
     function prev(): void { root.advance(-1) }
     function cancel(): void { root.close() }
+    function commit(): void { root.commit() }
     function open(): void { root.advance(1) }
   }
 

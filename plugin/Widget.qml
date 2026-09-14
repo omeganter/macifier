@@ -36,16 +36,18 @@ Panel {
     "capslock":    "Caps Lock key",
     "mediakeys":   "Media keys on F1-F12",
     "cmdkeys":     "Command key shortcuts",
-    "windowtitle": "Window name in bar"
+    "windowtitle": "Window name in bar",
+    "appswitcher": "⌘Tab switches apps"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
     "capslock":    "Caps Lock works, Compose moves to right ⌘",
     "mediakeys":   "Brightness and volume direct · asks for your password",
     "cmdkeys":     "⌘A ⌘Z ⌘N ⌘Q … tap Edit to choose",
-    "windowtitle": "Show the focused window's name"
+    "windowtitle": "Show the focused window's name",
+    "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "windowtitle"]
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
