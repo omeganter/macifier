@@ -163,6 +163,7 @@ a Mac user can change. The middle column is what Omarchy calls it.
 | Dock — indicators for open apps | Dot under running apps | **Macifier** (shipped) |
 | Dock — minimise effect (genie/scale) | Hyprland has no minimise-to-dock | Planned (P3 — hard; see §6) |
 | Dock — recent apps | — | Planned (P1) |
+| Trash in the Dock | freedesktop.org trash, via `gio` + the file manager | **Macifier** (shipped) — tile, full/empty icon, Open, Empty, drag-to-delete |
 | Mission Control | — | Plugin (`AndyWeiBoan/omarchy-mission-control`, `zzwong/omarchy-stage`, `rmacy/…`) |
 | App Exposé | — | Plugin (`kristofferR/omarchy-expose`, 24★, the healthiest of the bunch) |
 | Stage Manager | — | Plugin (`debba/omarchy-stage-manager`, `zzwong.stage`, `community.workspace-stage`) |

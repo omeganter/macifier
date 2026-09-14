@@ -7,6 +7,7 @@
 #   omarchy-macifier list                            available options
 #   omarchy-macifier dock <id> [add|remove|toggle]   pin or unpin an app
 #   omarchy-macifier dock placeholders [list|on|off] the "not built yet" tiles
+#   omarchy-macifier dock trash [open|empty|on|off]  the system trash tile
 #   omarchy-macifier panel [open|keys|dock]          summon the panel
 #
 # Every option is independent. Presets are just shorthand for a group of them,
@@ -77,13 +78,50 @@ dock_placeholders_json() {
   cat "$DOCKPH"
 }
 
+# --- trash -------------------------------------------------------------------
+# Linux already has a trash and Omarchy does not touch it: the freedesktop.org
+# spec puts the file in ~/.local/share/Trash/files and a .trashinfo record
+# beside it holding the original path, and every other mount gets its own
+# .Trash-$UID at its root. `gio` speaks all of that, so the dock tile is a view
+# onto the system trash rather than a trash of our own. Nothing here changes
+# how Omarchy or the file manager behaves.
+TRASH_OFF="$STATE/dock.trash.off"
+
+dock_trash_shown() { [[ ! -f $TRASH_OFF ]]; }
+dock_trash_available() { command -v gio >/dev/null 2>&1; }
+
+dock_trash_set() {
+  mkdir -p "$STATE"
+  case "${1:-toggle}" in
+    on)     rm -f "$TRASH_OFF" ;;
+    off)    touch "$TRASH_OFF" ;;
+    toggle) if dock_trash_shown; then touch "$TRASH_OFF"; else rm -f "$TRASH_OFF"; fi ;;
+    *) echo "usage: omarchy-macifier dock trash [status|open|empty|on|off|toggle]" >&2; exit 1 ;;
+  esac
+}
+
+# Counted through gio rather than by listing ~/.local/share/Trash/files, so
+# items trashed on another filesystem are counted too — they live in a
+# .Trash-$UID on that mount, not in home.
+dock_trash_count() {
+  dock_trash_available || { echo 0; return; }
+  gio trash --list 2>/dev/null | grep -c . || true
+}
+
+dock_trash_status_json() {
+  printf '{"shown":%s,"available":%s,"count":%s}\n' \
+    "$(dock_trash_shown && echo true || echo false)" \
+    "$(dock_trash_available && echo true || echo false)" \
+    "$(dock_trash_count)"
+}
+
 # `dock <id>` with no verb pins by default, which makes every word a potential
 # app id — so a subcommand this version does not know becomes a pinned app
 # called "placeholders". That is exactly what an older CLI did when a newer
 # dock polled it. Reserve the verbs on this side, and have the dock call the
 # explicit `placeholders list` form, which every older version rejects without
 # writing anything.
-DOCK_RESERVED=(apps list reset placeholders)
+DOCK_RESERVED=(apps list reset placeholders trash)
 
 dock_set() {
   local id="$1" action="${2:-toggle}" r
@@ -544,6 +582,15 @@ case "${1:-status}" in
                        list)          dock_placeholders_json ;;
                        on|off|toggle) dock_placeholders_set "$2" ;;
                        *) echo "usage: omarchy-macifier dock placeholders [list|on|off|toggle]" >&2; exit 1 ;;
+                     esac ;;
+             trash)
+                     case "${2:-status}" in
+                       status)        dock_trash_status_json ;;
+                       count)         dock_trash_count ;;
+                       open)          dock_trash_available && gio open trash:// >/dev/null 2>&1 || true ;;
+                       empty)         dock_trash_available && gio trash --empty || true ;;
+                       on|off|toggle) dock_trash_set "$2" ;;
+                       *) echo "usage: omarchy-macifier dock trash [status|count|open|empty|on|off|toggle]" >&2; exit 1 ;;
                      esac ;;
              "")     dock_pinned ;;
              *)      dock_set "$1" "${2:-toggle}" ;;

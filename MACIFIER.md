@@ -127,7 +127,7 @@ wondering whether you looked in the wrong place.
 ### The barred tiles
 
 After a separator sit the Mac dock staples Macifier does not have yet —
-Launchpad, Mission Control, System Settings, Stage Manager, Trash — drawn grey
+Launchpad, Mission Control, System Settings, Stage Manager — drawn grey
 with a bar struck through. They are reminders, not buttons; clicking one says
 what it will be and which phase it belongs to.
 
@@ -139,6 +139,33 @@ omarchy-macifier dock placeholders on
 They come from `~/.local/share/macifier/dock-placeholders.json`, re-read on
 every poll, so editing that file needs no shell restart. Delete a row the moment
 the real thing ships.
+
+### Trash
+
+Last in the dock, behind its own rule, where a Mac keeps it. The icon shows full
+or empty. Click opens it; two-finger click gives **Open** and **Empty Trash…**,
+the same two items the Mac dock offers, and emptying asks first because it
+cannot be undone. Dragging files onto it deletes them.
+
+This is **the trash Linux already has**, not one of ours. Omarchy has no trash of
+its own — nothing in `/usr/share/omarchy` mentions one — so the tile is a view
+onto the freedesktop.org trash your file manager already uses: the file moves to
+`~/.local/share/Trash/files` with a `.trashinfo` record beside it holding the
+original path, and every other mount gets its own `.Trash-$UID`. Nothing about
+how Omarchy or Nautilus behaves is changed.
+
+Because trashing is a *rename*, it cannot cross filesystems — that is why other
+mounts keep their own. Counting goes through `gio`, so items trashed on a USB
+stick are counted too. `rm` still bypasses all of this; it always did.
+
+```bash
+omarchy-macifier dock trash          # {"shown":true,"available":true,"count":0}
+omarchy-macifier dock trash open
+omarchy-macifier dock trash empty
+omarchy-macifier dock trash off      # hide the tile
+```
+
+Needs `gio` (ships with glib2). Without it the tile simply does not appear.
 
 ## Next
 

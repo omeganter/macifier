@@ -23,6 +23,14 @@ Item {
   property var pinned: []
   property var clients: []
   property var placeholders: []
+
+  // The system trash, not one of ours. Linux already has a freedesktop.org
+  // trash and Omarchy leaves it alone; this tile is a view onto it, so the
+  // file manager and the dock can never disagree about what is in there.
+  property int trashCount: 0
+  property bool trashShown: false
+  property bool trashAvailable: false
+  readonly property bool hasTrash: trashShown && trashAvailable
   property int iconSize: Style.space(46)
   property int peek: 3
 
@@ -70,6 +78,13 @@ Item {
         out.push({ kind: "planned", id: String(p.id), name: String(p.name),
                    glyph: String(p.glyph), phase: String(p.phase), note: String(p.note) })
       }
+    }
+    // Trash sits last behind its own rule, where macOS keeps it. When the
+    // placeholders are hidden that collapses to apps | rule | Trash, which is
+    // exactly the Mac arrangement.
+    if (hasTrash) {
+      out.push({ kind: "sep", id: "__sep_trash__" })
+      out.push({ kind: "trash", id: "__trash__" })
     }
     return out
   }
@@ -274,12 +289,33 @@ Item {
     }
   }
 
+  // Same `status` verb guard as the placeholders poll: a CLI older than this
+  // file refuses it instead of reading "trash" as an app to pin.
+  Process {
+    id: trashProc
+    command: ["omarchy-macifier", "dock", "trash", "status"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var d = JSON.parse(text)
+          root.trashCount = d.count || 0
+          root.trashShown = !!d.shown
+          root.trashAvailable = !!d.available
+        } catch (e) {
+          root.trashShown = false
+          root.trashAvailable = false
+        }
+      }
+    }
+  }
+
   Timer {
     interval: 2000; running: true; repeat: true; triggeredOnStart: true
     onTriggered: {
       if (!pinsProc.running) pinsProc.running = true
       if (!clientsProc.running) clientsProc.running = true
       if (!placeholdersProc.running) placeholdersProc.running = true
+      if (!trashProc.running) trashProc.running = true
     }
   }
 
@@ -350,6 +386,49 @@ Item {
     return rows
   }
 
+  // macOS's Trash menu is two items: Open, and Empty Trash. Emptying is the
+  // one irreversible thing the dock can do, so it asks first — as macOS does —
+  // by replacing the menu with the question rather than throwing up a dialog.
+  function menuForTrash() {
+    var rows = [{ kind: "header", label: trashLabel() }]
+    rows.push({ kind: "action", label: "Open", args: ["dock", "trash", "open"] })
+    if (trashCount > 0)
+      rows.push({ kind: "action", label: "Empty Trash…", confirmEmpty: true })
+    else
+      rows.push({ kind: "planned", label: "Empty Trash", note: "Already empty" })
+    return rows
+  }
+
+  function menuForEmptyConfirm() {
+    var n = trashCount
+    return [
+      { kind: "header", label: "Permanently erase " + n + (n === 1 ? " item?" : " items?") },
+      { kind: "planned", label: "This cannot be undone", note: "Restoring is only possible before emptying" },
+      { kind: "sep" },
+      { kind: "action", label: "Empty Trash", args: ["dock", "trash", "empty"] },
+      { kind: "action", label: "Cancel", cancel: true }
+    ]
+  }
+
+  function trashLabel() {
+    if (trashCount === 0) return "Trash — empty"
+    return "Trash — " + trashCount + (trashCount === 1 ? " item" : " items")
+  }
+
+  // Dropping files on the Trash deletes them, the way the Mac dock's does.
+  // Whether a layer-shell surface is offered a drag from the file manager is
+  // the compositor's call, so this is best-effort: if the drop never arrives
+  // the tile still opens and empties.
+  function trashUrls(urls) {
+    if (!urls || urls.length === 0) return
+    var args = ["trash"]
+    for (var i = 0; i < urls.length; i++) args.push(String(urls[i]))
+    dropProc.command = ["gio"].concat(args)
+    dropProc.running = true
+  }
+
+  Process { id: dropProc; command: ["true"] }
+
   function menuForPlanned(item) {
     return [
       { kind: "header", label: item.name },
@@ -371,12 +450,17 @@ Item {
       { kind: "sep" },
       { kind: "check", label: "Show placeholders", checked: placeholders.length > 0,
         args: ["dock", "placeholders", "toggle"] },
+      { kind: "check", label: "Show Trash", checked: trashShown,
+        args: ["dock", "trash", "toggle"] },
       { kind: "action", label: "Dock Settings…", args: ["panel", "dock"] }
     ]
   }
 
   function invoke(row) {
     if (row.kind === "planned" || row.kind === "header" || row.kind === "sep") return
+    // The two rows that stay inside the menu rather than closing it.
+    if (row.confirmEmpty !== undefined) { menuRows = menuForEmptyConfirm(); return }
+    if (row.cancel !== undefined) { closeMenu(); return }
     if (row.address !== undefined) focusWindow(row.address)
     else if (row.quit !== undefined) quitApp(row.quit)
     else if (row.open !== undefined) launch(row.open)
@@ -459,7 +543,9 @@ Item {
 
               readonly property bool isSep: modelData.kind === "sep"
               readonly property bool isPlanned: modelData.kind === "planned"
-              readonly property bool isRunning: !isSep && !isPlanned && !!root.runningIds[modelData.id]
+              readonly property bool isTrash: modelData.kind === "trash"
+              readonly property bool isRunning: !isSep && !isPlanned && !isTrash
+                                                && !!root.runningIds[modelData.id]
 
               width: isSep ? Style.space(9) : root.iconSize + Style.space(8)
               height: root.iconSize + Style.space(8)
@@ -482,10 +568,41 @@ Item {
                 width: root.iconSize; height: root.iconSize
                 sourceSize.width: 96; sourceSize.height: 96
                 fillMode: Image.PreserveAspectFit
-                source: (tile.isSep || tile.isPlanned) ? "" : root.iconFor(modelData.id)
+                // The icon theme already ships both states under the standard
+                // freedesktop names, so a full bin looks full in whatever theme
+                // the user runs — no artwork of ours to keep in step.
+                source: tile.isTrash
+                          ? Quickshell.iconPath(root.trashCount > 0 ? "user-trash-full"
+                                                                   : "user-trash", true)
+                          : ((tile.isSep || tile.isPlanned) ? "" : root.iconFor(modelData.id))
                 smooth: true
-                scale: tileMouse.containsMouse ? 1.18 : 1.0
+                scale: (tileMouse.containsMouse || trashDrop.containsDrag) ? 1.18 : 1.0
                 Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+              }
+
+              // Dropping files here deletes them, as on the Mac dock. Enabled
+              // only on the trash tile; harmless if the compositor never offers
+              // the drag to a layer-shell surface.
+              DropArea {
+                id: trashDrop
+                anchors.fill: parent
+                enabled: tile.isTrash
+                onDropped: function (drop) {
+                  if (drop.hasUrls) { root.trashUrls(drop.urls); drop.accept() }
+                }
+              }
+
+              // The drop-target ring, so it is obvious where the file is going.
+              Rectangle {
+                visible: tile.isTrash && trashDrop.containsDrag
+                anchors.centerIn: parent
+                width: root.iconSize + Style.space(6)
+                height: width
+                radius: Style.space(10)
+                color: "transparent"
+                border.width: Math.max(1, Style.space(2))
+                border.color: root.foreground
+                opacity: 0.6
               }
 
               // The placeholder tile: the glyph greyed back, inside a dashed-ish
@@ -554,8 +671,11 @@ Item {
                 onClicked: function (mouse) {
                   var x = tile.mapToItem(null, tile.width / 2, 0).x
                   if (mouse.button === Qt.RightButton) {
-                    root.openMenu(tile.isPlanned ? root.menuForPlanned(modelData)
-                                                 : root.menuForApp(modelData.id), x)
+                    root.openMenu(tile.isTrash ? root.menuForTrash()
+                                  : (tile.isPlanned ? root.menuForPlanned(modelData)
+                                                    : root.menuForApp(modelData.id)), x)
+                  } else if (tile.isTrash) {
+                    root.run(["dock", "trash", "open"])
                   } else if (tile.isPlanned) {
                     // Left-clicking a thing that does not exist should say so,
                     // not silently do nothing.
@@ -572,8 +692,9 @@ Item {
                 anchors.bottom: parent.top
                 anchors.bottomMargin: Style.space(4)
                 textFormat: Text.PlainText
-                text: tile.isPlanned ? modelData.name + " · not built yet"
-                                     : (tile.isSep ? "" : root.nameFor(modelData.id))
+                text: tile.isTrash ? root.trashLabel()
+                      : (tile.isPlanned ? modelData.name + " · not built yet"
+                                        : (tile.isSep ? "" : root.nameFor(modelData.id)))
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption

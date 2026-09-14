@@ -36,13 +36,6 @@
       "glyph": "",
       "phase": "P4",
       "note": "Focused window centred, the rest set aside"
-    },
-    {
-      "id": "trash",
-      "name": "Trash",
-      "glyph": "",
-      "phase": "P4",
-      "note": "Deleted files, still restorable"
     }
   ]
 }
