@@ -5,6 +5,9 @@
 #   omarchy-macifier preset <minimal|full|off>       a named set
 #   omarchy-macifier status [--json]                 what is on
 #   omarchy-macifier list                            available options
+#   omarchy-macifier dock <id> [add|remove|toggle]   pin or unpin an app
+#   omarchy-macifier dock placeholders [list|on|off] the "not built yet" tiles
+#   omarchy-macifier panel [open|keys|dock]          summon the panel
 #
 # Every option is independent. Presets are just shorthand for a group of them,
 # so "minimal" and "full" never become states you can be stuck in — turn any
@@ -47,8 +50,46 @@ dock_defaults() {
 dock_pinned() { [[ -f $DOCKSET ]] && cat "$DOCKSET" || true; }
 dock_is_pinned() { [[ -f $DOCKSET ]] && grep -qx "$1" "$DOCKSET"; }
 
+# Mac dock staples we have not built yet, shown as grey barred tiles so the gap
+# is visible rather than merely absent. Off is a file, so the default is on.
+DOCKPH="$SHARE/dock-placeholders.json"
+DOCKPH_OFF="$STATE/dock.placeholders.off"
+
+dock_placeholders_on() { [[ ! -f $DOCKPH_OFF ]]; }
+
+dock_placeholders_set() {
+  mkdir -p "$STATE"
+  case "${1:-toggle}" in
+    on)     rm -f "$DOCKPH_OFF" ;;
+    off)    touch "$DOCKPH_OFF" ;;
+    toggle) if dock_placeholders_on; then touch "$DOCKPH_OFF"; else rm -f "$DOCKPH_OFF"; fi ;;
+    *) echo "usage: omarchy-macifier dock placeholders [on|off|toggle]" >&2; exit 1 ;;
+  esac
+}
+
+# Hidden reads as an empty list rather than a flag the dock has to interpret —
+# one shape of answer, so the QML has no second code path to get wrong.
+dock_placeholders_json() {
+  if ! dock_placeholders_on || [[ ! -f $DOCKPH ]]; then
+    echo '{"placeholders":[]}'
+    return
+  fi
+  cat "$DOCKPH"
+}
+
+# `dock <id>` with no verb pins by default, which makes every word a potential
+# app id — so a subcommand this version does not know becomes a pinned app
+# called "placeholders". That is exactly what an older CLI did when a newer
+# dock polled it. Reserve the verbs on this side, and have the dock call the
+# explicit `placeholders list` form, which every older version rejects without
+# writing anything.
+DOCK_RESERVED=(apps list reset placeholders)
+
 dock_set() {
-  local id="$1" action="${2:-toggle}"
+  local id="$1" action="${2:-toggle}" r
+  for r in "${DOCK_RESERVED[@]}"; do
+    [[ $id == "$r" ]] && { echo "'$id' is a dock subcommand, not an app id" >&2; exit 1; }
+  done
   mkdir -p "$STATE"; touch "$DOCKSET"
   case "$action" in
     add)    dock_is_pinned "$id" || echo "$id" >> "$DOCKSET" ;;
@@ -498,9 +539,20 @@ case "${1:-status}" in
              apps)   dock_apps_json ;;
              list)   dock_pinned ;;
              reset)  mkdir -p "$STATE"; dock_defaults > "$DOCKSET" ;;
+             placeholders)
+                     case "${2:-list}" in
+                       list)          dock_placeholders_json ;;
+                       on|off|toggle) dock_placeholders_set "$2" ;;
+                       *) echo "usage: omarchy-macifier dock placeholders [list|on|off|toggle]" >&2; exit 1 ;;
+                     esac ;;
              "")     dock_pinned ;;
              *)      dock_set "$1" "${2:-toggle}" ;;
            esac ;;
+  # The dock's context menu has no way to summon a panel by itself, and the
+  # panel is the only place the full editor lives. One indirection, so the QML
+  # keeps calling nothing but this script.
+  panel)   shift
+           omarchy-shell -q local.macifier "${1:-open}" ;;
   key)     shift
            case "${1:-}" in
              preset) keys_preset "${2:?minimal|full|none}" ;;
@@ -515,5 +567,5 @@ case "${1:-status}" in
   on)      apply_preset "${2:-minimal}" ;;
   off)     apply_preset off ;;
   toggle)  if [[ "$(current_preset)" == off ]]; then apply_preset minimal; else apply_preset off; fi ;;
-  *) echo "usage: omarchy-macifier [option <name> [on|off|toggle] | preset <minimal|full|off> | status [--json] | list]" >&2; exit 1 ;;
+  *) echo "usage: omarchy-macifier [option <name> [on|off|toggle] | preset <minimal|full|off> | status [--json] | list | dock ... | panel [open|keys|dock]]" >&2; exit 1 ;;
 esac
