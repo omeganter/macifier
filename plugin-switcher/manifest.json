@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "local.macifier-switcher",
+  "name": "Macifier app switcher",
+  "version": "0.1.0",
+  "author": "kolyk",
+  "license": "MIT",
+  "description": "macOS-style Cmd+Tab switcher: an icon bar of running apps, most recent first.",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "Switcher.qml" }
+}

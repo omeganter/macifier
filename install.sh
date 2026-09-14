@@ -10,6 +10,8 @@ cd "$(dirname "$0")"
 install -Dm755 bin/omarchy-macifier "$HOME/.local/bin/omarchy-macifier"
 install -Dm644 plugin/manifest.json "$HOME/.config/omarchy/plugins/macifier/manifest.json"
 install -Dm644 plugin/Widget.qml    "$HOME/.config/omarchy/plugins/macifier/Widget.qml"
+install -Dm644 plugin-switcher/manifest.json "$HOME/.config/omarchy/plugins/macifier-switcher/manifest.json"
+install -Dm644 plugin-switcher/Switcher.qml  "$HOME/.config/omarchy/plugins/macifier-switcher/Switcher.qml"
 
 mkdir -p "$HOME/.local/share/macifier/options"
 install -m644 hypr/options/*.lua "$HOME/.local/share/macifier/options/"

@@ -26,10 +26,11 @@ OPTIONS=(
   "mediakeys|root|F1-F12 do brightness/volume directly, Fn for F-keys"
   "windowtitle|bar|Focused window's name shown in the bar"
   "cmdkeys|keys|Command-key shortcuts (configurable key by key)"
+  "appswitcher|switcher|Command+Tab switches apps, not workspaces"
 )
 
 MINIMAL=(scroll capslock mediakeys)
-FULL=(scroll capslock mediakeys windowtitle cmdkeys)
+FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher)
 
 # --- the Command-key table ---------------------------------------------------
 # letter|mac label|group|displaced Omarchy binding|Lua dispatcher for it
@@ -131,6 +132,7 @@ is_on() {
     bar)  [[ -f "$STATE/$n" ]] ;;
     root) [[ -f $FNMODE_TMPFILE ]] ;;
     keys) [[ -s $KEYSET ]] ;;
+    switcher) [[ -f "$HYPR_DIR/macifier-appswitcher.lua" ]] ;;
   esac
 }
 
@@ -315,6 +317,10 @@ option_on() {
     bar)  bar_on ;;
     root) mediakeys_on ;;
     keys) [[ -s $KEYSET ]] || keys_preset_set minimal > "$KEYSET"; keys_apply ;;
+    switcher)
+      omarchy plugin enable local.macifier-switcher >/dev/null 2>&1 || true
+      cp "$SHARE/options/appswitcher.lua" "$HYPR_DIR/macifier-appswitcher.lua"
+      reload ;;
   esac
 }
 
@@ -325,6 +331,10 @@ option_off() {
     bar)  bar_off ;;
     root) mediakeys_off ;;
     keys) : > "$KEYSET"; keys_apply ;;
+    switcher)
+      rm -f "$HYPR_DIR/macifier-appswitcher.lua"
+      omarchy plugin disable local.macifier-switcher >/dev/null 2>&1 || true
+      reload ;;
   esac
 }
 

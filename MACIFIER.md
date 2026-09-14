@@ -24,6 +24,7 @@ Then click ` Macifier` in the bar and pick what you want.
 | `mediakeys` | F1–F12 do brightness and volume. Asks for your password | ● | ● |
 | `cmdkeys` | ⌘A ⌘Z ⌘F ⌘S and the rest | | ● |
 | `windowtitle` | Focused window's name in the bar | | ● |
+| `appswitcher` | ⌘Tab switches apps, not workspaces, with an icon bar | | ● |
 
 Options are independent. Presets just set a group, so you can flip any one
 afterwards and the rest stay put.
@@ -72,10 +73,20 @@ omarchy-macifier key F off
 omarchy-macifier key preset minimal|full|none
 ```
 
+## ⌘Tab
+
+Hold ⌘, tap Tab to walk the icon bar, release ⌘ to switch. Grouped by app and
+ordered most-recently-used, like a Mac. Escape cancels.
+
+Workspace cycling moves to ⌘⌥Tab. Nothing is removed.
+
+The release is read by the overlay, not by a Hyprland bind: Hyprland's
+modifier-release bind is swallowed once another bind fires during the hold, and
+Tab always does. The overlay takes exclusive keyboard focus and sees the event.
+
 ## Next
 
-⌘Tab app switcher with an app bar. Designed in [docs/PLAN.md](docs/PLAN.md),
-not built. Good first contribution.
+Nothing planned. [docs/PLAN.md](docs/PLAN.md) has the design notes.
 
 [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) lists the Omarchy newcomer
 problems this came out of.
