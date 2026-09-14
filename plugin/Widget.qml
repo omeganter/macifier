@@ -1,100 +1,206 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Macifier — bar control for Mac-affinity mode.
+// Macifier — bar control and options panel.
 //
-// State is owned by `omarchy-macifier`, not by this widget: the script is the
-// single source of truth and the widget only reflects and pokes it, so the CLI
-// and the bar cannot disagree when either one is used.
-//
-// When on, the widget names itself. An unlabelled glyph is a puzzle; a named
-// one tells you what is currently changing your machine and, by being visible
-// at all, tells you it can be switched off.
-BarWidget {
+// The CLI owns all state; this panel only reflects it and calls back into it.
+// `omarchy-macifier status --json` is the single read, so the bar, the terminal
+// and the panel can never disagree about what is on.
+Panel {
   id: root
   moduleName: "local.macifier"
+  // Registers open/close/toggle over IPC, so the panel is reachable from the
+  // CLI and the Omarchy menu, not only by clicking the bar.
+  ipcTarget: "local.macifier"
 
-  property bool active: false
+  // Panel extends plain Item, so unlike BarWidget it does not derive these
+  // from the bar. Same definitions BarWidget uses.
+  readonly property bool vertical: bar ? bar.vertical : false
+  readonly property int barSize: bar ? bar.barSize : Style.bar.sizeHorizontal
 
-  function refresh() {
-    if (!stateProc.running) stateProc.running = true
+  property var opts: ({})
+  property string preset: "off"
+  readonly property bool anyOn: {
+    for (var k in opts) if (opts[k]) return true
+    return false
   }
 
-  // `omarchy toggle enabled <flag>` answers through its exit code, so there is
-  // no output to parse.
+  readonly property var labels: ({
+    "scroll":      "Natural scrolling",
+    "capslock":    "Caps Lock key",
+    "windowtitle": "Window name in bar"
+  })
+  readonly property var hints: ({
+    "scroll":      "Trackpad scrolls the macOS way",
+    "capslock":    "Caps Lock works, Compose moves to right ⌘",
+    "windowtitle": "Show the focused window's name"
+  })
+  readonly property var order: ["scroll", "capslock", "windowtitle"]
+
+  function refresh() { if (!stateProc.running) stateProc.running = true }
+
+  function run(args) {
+    if (actionProc.running) return
+    actionProc.command = ["omarchy-macifier"].concat(args)
+    actionProc.running = true
+  }
+
   Process {
     id: stateProc
-    command: ["omarchy", "toggle", "enabled", "macifier"]
-    onExited: function(exitCode) { root.active = exitCode === 0 }
+    command: ["omarchy-macifier", "status", "--json"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var d = JSON.parse(text)
+          root.opts = d.options || ({})
+          root.preset = d.preset || "off"
+        } catch (e) { /* leave last good state rather than blanking the panel */ }
+      }
+    }
   }
 
   Process {
-    id: toggleProc
-    command: ["omarchy-macifier", "toggle"]
+    id: actionProc
+    command: ["omarchy-macifier", "status"]
     onExited: root.refresh()
   }
 
-  // Re-read on a slow tick as well as after our own click, so the bar stays
-  // right when the mode is changed from the terminal or the menu.
+  // Catches changes made from the terminal as well as our own.
   Timer {
-    interval: 5000
-    running: true
-    repeat: true
-    triggeredOnStart: true
+    interval: 4000; running: true; repeat: true; triggeredOnStart: true
     onTriggered: root.refresh()
   }
 
   visible: !vertical
-  implicitWidth: visible ? content.implicitWidth + Style.space(16) : 0
+  implicitWidth: visible ? barRow.implicitWidth + Style.space(16) : 0
   implicitHeight: barSize
 
   Behavior on implicitWidth {
     NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
   }
 
-  Row {
-    id: content
-    anchors.centerIn: parent
-    spacing: Style.space(6)
+  Item {
+    id: anchor
+    anchors.fill: parent
 
-    Text {
-      id: glyph
-      anchors.verticalCenter: parent.verticalCenter
-      text: ""
-      color: root.bar ? root.bar.barForeground : Color.foreground
-      font.family: root.bar ? root.bar.fontFamily : Style.font.family
-      font.pixelSize: Style.font.caption
-      opacity: root.active ? 1.0 : 0.45
+    Row {
+      id: barRow
+      anchors.centerIn: parent
+      spacing: Style.space(6)
 
-      Behavior on opacity {
-        NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: ""
+        color: root.barForeground
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.caption
+        opacity: root.anyOn ? 1.0 : 0.45
+        Behavior on opacity { NumberAnimation { duration: 150 } }
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.anyOn
+        textFormat: Text.PlainText
+        text: root.preset === "full" ? "Macifier Full" : "Macifier"
+        color: root.barForeground
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.caption
+        opacity: 0.85
       }
     }
 
-    Text {
-      id: name
-      anchors.verticalCenter: parent.verticalCenter
-      visible: root.active
-      textFormat: Text.PlainText
-      text: "Macifier"
-      color: root.bar ? root.bar.barForeground : Color.foreground
-      font.family: root.bar ? root.bar.fontFamily : Style.font.family
-      font.pixelSize: Style.font.caption
-      opacity: 0.85
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: root.toggle()
     }
   }
 
-  MouseArea {
-    anchors.fill: parent
-    hoverEnabled: true
-    cursorShape: Qt.PointingHandCursor
-    onClicked: if (!toggleProc.running) toggleProc.running = true
-    onEntered: if (root.bar) root.bar.showTooltip(root, root.active
-      ? "Macifier is on — click to return to stock Omarchy"
-      : "Macifier is off — click to turn on Mac-style defaults")
-    onExited: if (root.bar) root.bar.hideTooltip(root)
+  KeyboardPanel {
+    id: panel
+    anchorItem: anchor
+    owner: root
+    bar: root.bar
+    open: root.opened
+    contentWidth: panel.fittedContentWidth(Style.space(300))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(460))
+
+    ColumnLayout {
+      id: column
+      width: parent.width
+      spacing: Style.space(10)
+
+      PanelSectionHeader { text: "Presets"; Layout.fillWidth: true }
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(8)
+
+        Repeater {
+          model: [
+            { id: "off",     label: "Off" },
+            { id: "minimal", label: "Minimal" },
+            { id: "full",    label: "Full" }
+          ]
+          delegate: Button {
+            required property var modelData
+            Layout.fillWidth: true
+            text: modelData.label
+            // "custom" matches no preset, so no button reads as active — which
+            // is honest: the user has a mix none of the presets describe.
+            selected: root.preset === modelData.id
+            bordered: true
+            onClicked: root.run(["preset", modelData.id])
+          }
+        }
+      }
+
+      PanelSeparator { Layout.fillWidth: true }
+
+      PanelSectionHeader { text: "Options"; Layout.fillWidth: true }
+
+      Repeater {
+        model: root.order
+        delegate: RowLayout {
+          required property var modelData
+          Layout.fillWidth: true
+          spacing: Style.space(10)
+
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 0
+            Text {
+              Layout.fillWidth: true
+              textFormat: Text.PlainText
+              text: root.labels[modelData] || modelData
+              color: Color.foreground
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.body
+              elide: Text.ElideRight
+            }
+            Text {
+              Layout.fillWidth: true
+              textFormat: Text.PlainText
+              text: root.hints[modelData] || ""
+              color: Qt.darker(Color.foreground, 1.5)
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+          }
+
+          ToggleSwitch {
+            checked: root.opts[modelData] === true
+            onToggled: root.run(["option", modelData, checked ? "off" : "on"])
+          }
+        }
+      }
+    }
   }
 }

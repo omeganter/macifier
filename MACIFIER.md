@@ -25,12 +25,24 @@ opinion stays the default. The switcher gets a ramp.
 
 ## What it does
 
-| Change | Status |
-|---|---|
-| Trackpad scrolls in macOS direction (`natural_scroll`) | ✅ shipped |
-| Keybinding menu shows Command / Option / Control | planned |
-| Focused window's name visible in the bar | planned |
-| Onboarding note: folders bookmark, files star | planned |
+Every option is **independent**. Presets are shorthand for a group of them, never a
+state you get stuck in — flip any single option afterwards and the rest stay put.
+
+| Option | What it changes | Minimal | Full |
+|---|---|:---:|:---:|
+| `scroll` | Trackpad scrolls the macOS way | ● | ● |
+| `capslock` | Caps Lock works; Compose moves to right ⌘ | ● | ● |
+| `windowtitle` | Focused window's name shown in the bar | | ● |
+
+**Minimal** is the safe set: things a switcher notices in the first minute, none of which
+can break anything. **Full** is the ambition — "be on a Mac, in Linux" — and will take a
+long time. It grows as options prove themselves, and it is the natural place for
+contributors to add work.
+
+Planned, not yet built: keybinding menu showing Command / Option / Control instead of
+SUPER / ALT / CTRL; onboarding note that folders bookmark and files star. Deliberately
+**out** for now: Cmd-based copy/paste — terminals, Chromium and TUI apps each handle
+`SUPER+C/V` differently, and breaking copy/paste would discredit the whole idea.
 
 ## Why it is reversible
 
@@ -58,27 +70,47 @@ omarchy restart shell
 
 ## Use
 
+Click ` Macifier` in the bar to open the options panel: presets across the top, and a
+switch per option with a one-line explanation of what each does. Everything can be turned
+on or off individually from there.
+
+When anything is on the widget shows the Apple glyph and names itself; when everything is
+off the glyph dims and the label disappears. The name is deliberate — an unlabelled glyph
+is a puzzle, and a visible name answers both "what is changing my machine?" and "how do I
+stop it?" without anyone having to go looking.
+
+From the terminal:
+
 ```bash
-omarchy-macifier on|off|toggle|status
+omarchy-macifier status                     # what is on
+omarchy-macifier preset minimal|full|off    # a named set
+omarchy-macifier option scroll on|off       # one option
+omarchy-macifier list                       # available options
 ```
 
-Or click ` Macifier` in the bar. When on, the widget shows the Apple glyph and names
-itself; when off, the glyph dims and the label disappears. The name is deliberate — an
-unlabelled glyph is a puzzle, and a visible name answers both "what is changing my
-machine?" and "how do I stop it?" without anyone having to go looking.
+The panel is also reachable over IPC, so it can be bound to a key or a menu entry:
+
+```bash
+qs -p /usr/share/omarchy/shell ipc call local.macifier toggle
+```
 
 ## Layout
 
 ```
 bin/omarchy-macifier    → ~/.local/bin/              CLI, single source of truth for state
-hypr/macifier.lua       → ~/.local/share/macifier/   template copied into the toggle dir
-plugin/                 → ~/.config/omarchy/plugins/macifier/   third-party bar widget
+hypr/options/*.lua      → ~/.local/share/macifier/options/   one fragment per option
+plugin/                 → ~/.config/omarchy/plugins/macifier/   bar widget + options panel
 docs/PLAN.md            implementation plan, phases, risks, open questions
 docs/FRICTION-LOG.md    the newcomer-friction findings this project came out of
 ```
 
-The bar widget owns no state. It reads `omarchy toggle enabled macifier` and calls
-`omarchy-macifier toggle`, so the CLI and the bar can never disagree.
+The panel owns no state. It reads `omarchy-macifier status --json` and calls back into the
+CLI, so the bar, the panel and the terminal can never disagree about what is on.
+
+Adding an option means: a fragment in `hypr/options/`, one line in the `OPTIONS` table in
+the CLI, and a label in `Widget.qml`. Options that are not Hyprland config (like
+`windowtitle`, which edits the bar layout) declare a different `kind` and get explicit
+apply/revert functions.
 
 ---
 

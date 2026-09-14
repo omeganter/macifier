@@ -1,40 +1,159 @@
 #!/bin/bash
 # Macifier — opt-in, reversible Mac-affinity mode for Omarchy.
 #
-# Prototype (Phase 0). Ships nothing into /usr/share/omarchy; everything it
-# writes lives under $HOME and is removed again by `off`.
+#   omarchy-macifier option <name> [on|off|toggle]   one option
+#   omarchy-macifier preset <minimal|full|off>       a named set
+#   omarchy-macifier status [--json]                 what is on
+#   omarchy-macifier list                            available options
 #
-#   omarchy-macifier on|off|toggle|status
+# Every option is independent. Presets are just shorthand for a group of them,
+# so "minimal" and "full" never become states you can be stuck in — turn any
+# single option off afterwards and the rest stay put.
 
 set -euo pipefail
 
-TEMPLATE="$HOME/.local/share/macifier/macifier.lua"
-FLAG_HYPR="$HOME/.local/state/omarchy/toggles/hypr/macifier.lua"
+SHARE="$HOME/.local/share/macifier"
+HYPR_DIR="$HOME/.local/state/omarchy/toggles/hypr"
+STATE="$HOME/.local/state/macifier"
 
-is_on() { [[ -f $FLAG_HYPR ]]; }
+# name|kind|description
+# kind: hypr = a Lua fragment in the toggle dir; bar = an Omarchy bar widget
+OPTIONS=(
+  "scroll|hypr|Trackpad scrolls in the macOS direction"
+  "capslock|hypr|Caps Lock works as Caps Lock, not Compose"
+  "windowtitle|bar|Focused window's name shown in the bar"
+)
+
+MINIMAL=(scroll capslock)
+FULL=(scroll capslock windowtitle)
+
+opt_kind() { local n="$1"; for o in "${OPTIONS[@]}"; do [[ ${o%%|*} == "$n" ]] && { IFS='|' read -r _ k _ <<<"$o"; echo "$k"; return; }; done; return 1; }
+opt_desc() { local n="$1"; for o in "${OPTIONS[@]}"; do [[ ${o%%|*} == "$n" ]] && { IFS='|' read -r _ _ d <<<"$o"; echo "$d"; return; }; done; }
+opt_names() { for o in "${OPTIONS[@]}"; do echo "${o%%|*}"; done; }
 
 reload() { hyprctl reload >/dev/null 2>&1 || true; }
 
-on() {
-  [[ -f $TEMPLATE ]] || { echo "missing template: $TEMPLATE" >&2; exit 1; }
-  mkdir -p "$(dirname "$FLAG_HYPR")"
-  cp "$TEMPLATE" "$FLAG_HYPR"
-  omarchy toggle macifier on          # marker other code can query
-  reload
-  echo "macifier: on"
+is_on() {
+  local n="$1"
+  case "$(opt_kind "$n")" in
+    hypr) [[ -f "$HYPR_DIR/macifier-$n.lua" ]] ;;
+    bar)  [[ -f "$STATE/$n" ]] ;;
+  esac
 }
 
-off() {
-  rm -f "$FLAG_HYPR"
-  omarchy toggle macifier off
-  reload
-  echo "macifier: off"
+# --- the one option that touches state we do not own -------------------------
+# The bar layout is the user's. Record whether the widget was already there so
+# turning this option off restores what they had rather than what we assume.
+bar_on() {
+  mkdir -p "$STATE"
+  if omarchy bar list 2>/dev/null | grep -q "omarchy.active-window" \
+     || python3 - <<'PY'
+import json,sys
+try: d=json.load(open(__import__("os").path.expanduser("~/.config/omarchy/shell.json")))
+except Exception: sys.exit(1)
+w=[x.get("id") for s in d.get("bar",{}).get("layout",{}).values() for x in s]
+sys.exit(0 if "omarchy.active-window" in w else 1)
+PY
+  then
+    echo "preexisting" > "$STATE/windowtitle.prior"
+  else
+    echo "added" > "$STATE/windowtitle.prior"
+    omarchy bar put omarchy.active-window --section left >/dev/null 2>&1 || true
+  fi
+  touch "$STATE/windowtitle"
 }
 
-case "${1:-toggle}" in
-  on)     on ;;
-  off)    off ;;
-  toggle) if is_on; then off; else on; fi ;;
-  status) if is_on; then echo "on"; else echo "off"; fi ;;
-  *)      echo "Usage: omarchy-macifier on|off|toggle|status" >&2; exit 1 ;;
+bar_off() {
+  if [[ "$(cat "$STATE/windowtitle.prior" 2>/dev/null)" == "added" ]]; then
+    omarchy bar remove omarchy.active-window >/dev/null 2>&1 || true
+  fi
+  rm -f "$STATE/windowtitle" "$STATE/windowtitle.prior"
+}
+
+option_on() {
+  local n="$1"
+  case "$(opt_kind "$n")" in
+    hypr) mkdir -p "$HYPR_DIR"; cp "$SHARE/options/$n.lua" "$HYPR_DIR/macifier-$n.lua"; reload ;;
+    bar)  bar_on ;;
+  esac
+}
+
+option_off() {
+  local n="$1"
+  case "$(opt_kind "$n")" in
+    hypr) rm -f "$HYPR_DIR/macifier-$n.lua"; reload ;;
+    bar)  bar_off ;;
+  esac
+}
+
+set_option() {
+  local n="$1" action="${2:-toggle}"
+  opt_kind "$n" >/dev/null || { echo "unknown option: $n" >&2; exit 1; }
+  case "$action" in
+    on)     option_on  "$n" ;;
+    off)    option_off "$n" ;;
+    toggle) if is_on "$n"; then option_off "$n"; else option_on "$n"; fi ;;
+    *)      echo "usage: omarchy-macifier option <name> [on|off|toggle]" >&2; exit 1 ;;
+  esac
+}
+
+apply_preset() {
+  local preset="$1" wanted=()
+  case "$preset" in
+    minimal) wanted=("${MINIMAL[@]}") ;;
+    full)    wanted=("${FULL[@]}") ;;
+    off)     wanted=() ;;
+    *) echo "unknown preset: $preset (minimal|full|off)" >&2; exit 1 ;;
+  esac
+  local n keep
+  while read -r n; do
+    keep=no
+    for w in ${wanted[@]+"${wanted[@]}"}; do [[ $w == "$n" ]] && keep=yes; done
+    if [[ $keep == yes ]]; then is_on "$n" || option_on "$n"
+    else is_on "$n" && option_off "$n" || true; fi
+  done < <(opt_names)
+  echo "macifier: $preset"
+}
+
+# Which preset, if any, the current set of options happens to match.
+current_preset() {
+  local on=() n
+  while read -r n; do is_on "$n" && on+=("$n"); done < <(opt_names)
+  [[ ${#on[@]} -eq 0 ]] && { echo off; return; }
+  local joined="${on[*]}"
+  [[ $joined == "${MINIMAL[*]}" ]] && { echo minimal; return; }
+  [[ $joined == "${FULL[*]}" ]] && { echo full; return; }
+  echo custom
+}
+
+status_json() {
+  local n first=1
+  printf '{"preset":"%s","options":{' "$(current_preset)"
+  while read -r n; do
+    [[ $first -eq 1 ]] || printf ','
+    first=0
+    printf '"%s":%s' "$n" "$(is_on "$n" && echo true || echo false)"
+  done < <(opt_names)
+  printf '}}\n'
+}
+
+status_text() {
+  local p; p="$(current_preset)"
+  echo "macifier: $p"
+  local n
+  while read -r n; do
+    printf '  [%s] %-12s %s\n' "$(is_on "$n" && echo x || echo ' ')" "$n" "$(opt_desc "$n")"
+  done < <(opt_names)
+}
+
+case "${1:-status}" in
+  option)  shift; set_option "${1:?option name required}" "${2:-toggle}" ;;
+  preset)  shift; apply_preset "${1:?preset required}" ;;
+  status)  if [[ "${2:-}" == "--json" ]]; then status_json; else status_text; fi ;;
+  list)    opt_names ;;
+  # Back-compat with the Phase 0 interface.
+  on)      apply_preset "${2:-minimal}" ;;
+  off)     apply_preset off ;;
+  toggle)  if [[ "$(current_preset)" == off ]]; then apply_preset minimal; else apply_preset off; fi ;;
+  *) echo "usage: omarchy-macifier [option <name> [on|off|toggle] | preset <minimal|full|off> | status [--json] | list]" >&2; exit 1 ;;
 esac

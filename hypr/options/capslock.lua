@@ -1,0 +1,16 @@
+-- Macifier option: capslock
+--
+-- Omarchy's default kb_options makes Caps Lock the Compose key and moves
+-- caps-locking onto "both Shifts together". On a Mac, Caps Lock is Caps Lock,
+-- so a switcher presses it, sees nothing happen, and reasonably concludes the
+-- keyboard is broken. (Reported upstream at least eight times: #2241, #2545,
+-- #3238, #5200, #7255, #9560, #7440, #10545.)
+--
+-- Compose is genuinely useful though — — ≠ ≤ → € ½ © — so rather than dropping
+-- it, move it to right Command, which macOS leaves as a duplicate modifier and
+-- almost nobody uses. Right Alt is deliberately avoided: it is AltGr, and on
+-- layouts like `es` it types @ # € [ ] { } \ |.
+--
+-- NOTE: this sets kb_options wholesale and wins over ~/.config/hypr/input.lua
+-- while the option is on.
+hl.config({ input = { kb_options = "compose:rwin" } })
