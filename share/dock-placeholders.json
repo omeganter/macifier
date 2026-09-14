@@ -1,0 +1,48 @@
+{
+  "_comment": [
+    "Mac dock staples Macifier has not built yet. They appear in the dock as",
+    "grey, barred tiles after a separator — a standing reminder of what is next,",
+    "not a broken button. Phases refer to docs/SETTINGS.md.",
+    "",
+    "Delete a row here the moment the real thing ships. Nothing else reads it,",
+    "and it is re-read on every dock poll, so edits show up without a shell",
+    "restart — unlike the QML."
+  ],
+  "placeholders": [
+    {
+      "id": "launchpad",
+      "name": "Launchpad",
+      "glyph": "",
+      "phase": "P2",
+      "note": "Full-screen grid of every app"
+    },
+    {
+      "id": "missioncontrol",
+      "name": "Mission Control",
+      "glyph": "",
+      "phase": "P2",
+      "note": "Every window, spread out at once"
+    },
+    {
+      "id": "settings",
+      "name": "System Settings",
+      "glyph": "",
+      "phase": "P0",
+      "note": "Every Mac setting, tagged by who provides it"
+    },
+    {
+      "id": "stagemanager",
+      "name": "Stage Manager",
+      "glyph": "",
+      "phase": "P4",
+      "note": "Focused window centred, the rest set aside"
+    },
+    {
+      "id": "trash",
+      "name": "Trash",
+      "glyph": "",
+      "phase": "P4",
+      "note": "Deleted files, still restorable"
+    }
+  ]
+}

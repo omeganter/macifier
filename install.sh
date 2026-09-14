@@ -17,6 +17,7 @@ install -Dm644 plugin-dock/Dock.qml      "$HOME/.config/omarchy/plugins/macifier
 
 mkdir -p "$HOME/.local/share/macifier/options"
 install -m644 hypr/options/*.lua "$HOME/.local/share/macifier/options/"
+install -Dm644 share/dock-placeholders.json "$HOME/.local/share/macifier/dock-placeholders.json"
 
 echo "installed. next:"
 echo "  omarchy plugin enable local.macifier right   # first time only"

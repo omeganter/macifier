@@ -75,6 +75,10 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function keys(): void { root.view = "keys"; root.open() }
+    // The dock's own context menu ends in "Dock Settings…", and the editor it
+    // wants is a view of this panel — so the dock summons it the same way a
+    // keybinding would.
+    function dock(): void { root.view = "dock"; root.open() }
   }
 
   Process {
@@ -184,7 +188,8 @@ Panel {
     open: root.opened
     contentWidth: panel.fittedContentWidth(Style.space(340))
     contentHeight: panel.fittedContentHeight(
-      root.view === "main" ? mainCol.implicitHeight : keysCol.implicitHeight,
+      root.view === "main" ? mainCol.implicitHeight
+        : (root.view === "dock" ? dockCol.implicitHeight : keysCol.implicitHeight),
       Style.space(520))
 
     // ---------------------------------------------------------------- main --

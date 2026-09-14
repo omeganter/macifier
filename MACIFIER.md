@@ -72,6 +72,8 @@ omarchy-macifier preset minimal|full|off
 omarchy-macifier option scroll on|off
 omarchy-macifier key F off
 omarchy-macifier key preset minimal|full|none
+omarchy-macifier dock placeholders on|off
+omarchy-macifier panel open|keys|dock
 ```
 
 ## ⌘Tab
@@ -103,9 +105,41 @@ omarchy-macifier dock chromium add|remove
 omarchy-macifier dock reset
 ```
 
+### Two-finger click
+
+Right-click — two fingers on a trackpad — opens a menu, as on macOS.
+
+On an **app**: its open windows by name, click one to focus it. Keep in Dock.
+Quit, which closes every window it has. On the **dock itself**: hiding,
+magnification, position, and Dock Settings…
+
+Options we have not built are listed anyway, greyed, each saying why and which
+phase it is in. A menu that silently omits what it cannot do leaves you
+wondering whether you looked in the wrong place.
+
+### The barred tiles
+
+After a separator sit the Mac dock staples Macifier does not have yet —
+Launchpad, Mission Control, System Settings, Stage Manager, Trash — drawn grey
+with a bar struck through. They are reminders, not buttons; clicking one says
+what it will be and which phase it belongs to.
+
+```bash
+omarchy-macifier dock placeholders off     # hide them
+omarchy-macifier dock placeholders on
+```
+
+They come from `~/.local/share/macifier/dock-placeholders.json`, re-read on
+every poll, so editing that file needs no shell restart. Delete a row the moment
+the real thing ships.
+
 ## Next
 
-Nothing planned. [docs/PLAN.md](docs/PLAN.md) has the design notes.
+[docs/SETTINGS.md](docs/SETTINGS.md) plans a System Settings window: every Mac
+option, tagged by who provides it. The barred dock tiles are its phases made
+visible.
+
+[docs/PLAN.md](docs/PLAN.md) has the original design notes.
 
 [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) lists the Omarchy newcomer
 problems this came out of.
