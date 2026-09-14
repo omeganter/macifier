@@ -49,7 +49,38 @@ Item {
     return null
   }
 
+
+  // Omarchy ships icons for the coding agents but no desktop entry, so agent
+  // windows fall back to a generic cog. Resolve the user's chosen agent once
+  // and use its own artwork instead.
+  property string agentIcon: ""
+  property string agentName: ""
+
+  Process {
+    id: agentProc
+    command: ["omarchy-default-agent"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var a = String(text).trim()
+        if (a.length === 0) return
+        root.agentName = a.charAt(0).toUpperCase() + a.substring(1)
+        root.agentIcon = "file:///usr/share/omarchy/shell/plugins/agents/assets/" + a + ".svg"
+      }
+    }
+  }
+
+  // org.omarchy.agent is always an agent. org.omarchy.terminal is Omarchy's
+  // general-purpose terminal, but the agent is launched into it on first run
+  // and then keeps it for the session, so it is an agent window far more often
+  // than not — a transient package-install window borrowing the icon for a few
+  // seconds is a smaller cost than a permanently wrong one.
+  function isAgentClass(cls) {
+    var lc = String(cls || "").toLowerCase()
+    return lc === "org.omarchy.agent" || lc === "org.omarchy.terminal"
+  }
+
   function iconFor(id) {
+    if (isAgentClass(id) && agentIcon.length > 0) return agentIcon
     var e = entryById(id)
     if (e) {
       var p = Quickshell.iconPath(e.icon, true)
@@ -60,6 +91,7 @@ Item {
   }
 
   function nameFor(id) {
+    if (isAgentClass(id) && agentName.length > 0) return agentName
     var e = entryById(id)
     return e && e.name ? String(e.name) : String(id)
   }
@@ -82,6 +114,8 @@ Item {
   }
 
   Process { id: focusProc; command: ["true"] }
+
+  Component.onCompleted: agentProc.running = true
   Process { id: launchProc; command: ["true"] }
 
   Process {
@@ -133,7 +167,10 @@ Item {
             if (!found && host.length > 0 &&
                 String(e.execString || e.command || "").toLowerCase().indexOf(host) >= 0) found = id
           }
-          map[lc] = { entryId: found, address: String(c.address) }
+          // No desktop entry is not a reason to be absent from the dock — the
+          // agent windows are exactly that case. Fall back to the class as the
+          // key so they still get a tile.
+          map[lc] = { entryId: found || String(c.class), address: String(c.address) }
         }
         root.running = map
       }

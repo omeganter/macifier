@@ -93,7 +93,38 @@ Item {
     return byId || byHost || byTail || null
   }
 
+
+  // Omarchy ships icons for the coding agents but no desktop entry, so agent
+  // windows fall back to a generic cog. Resolve the user's chosen agent once
+  // and use its own artwork instead.
+  property string agentIcon: ""
+  property string agentName: ""
+
+  Process {
+    id: agentProc
+    command: ["omarchy-default-agent"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var a = String(text).trim()
+        if (a.length === 0) return
+        root.agentName = a.charAt(0).toUpperCase() + a.substring(1)
+        root.agentIcon = "file:///usr/share/omarchy/shell/plugins/agents/assets/" + a + ".svg"
+      }
+    }
+  }
+
+  // org.omarchy.agent is always an agent. org.omarchy.terminal is Omarchy's
+  // general-purpose terminal, but the agent is launched into it on first run
+  // and then keeps it for the session, so it is an agent window far more often
+  // than not — a transient package-install window borrowing the icon for a few
+  // seconds is a smaller cost than a permanently wrong one.
+  function isAgentClass(cls) {
+    var lc = String(cls || "").toLowerCase()
+    return lc === "org.omarchy.agent" || lc === "org.omarchy.terminal"
+  }
+
   function iconFor(cls) {
+    if (isAgentClass(cls) && agentIcon.length > 0) return agentIcon
     var e = entryFor(cls)
     if (e) {
       var p = Quickshell.iconPath(e.icon, true)
@@ -106,6 +137,7 @@ Item {
   // A Mac names the app, not its window class. Fall back to the readable half
   // of a reverse-DNS class rather than showing "org.omarchy.terminal".
   function nameFor(cls) {
+    if (isAgentClass(cls) && agentName.length > 0) return agentName
     var e = entryFor(cls)
     if (e && e.name) return String(e.name)
     var v = String(cls || "")
@@ -153,6 +185,8 @@ Item {
   }
 
   Process { id: focusProc; command: ["true"] }
+
+  Component.onCompleted: agentProc.running = true
 
   IpcHandler {
     target: "local.macifier-switcher"
