@@ -65,8 +65,7 @@ state you get stuck in — flip any single option afterwards and the rest stay p
 | `capslock` | Caps Lock works; Compose moves to right ⌘ | ● | ● |
 | `mediakeys` | F1–F12 do brightness/volume directly, Fn for F-keys † | ● | ● |
 | `windowtitle` | Focused window's name shown in the bar | | ● |
-| `cmdkeys` | ⌘A, ⌘Z, ⌘N, ⌘R, ⌘Q and the rest of the Mac editing set | | ● |
-| `cmdkeys-wm` | ⌘F ⌘S ⌘T ⌘O ⌘P ⌘G ⌘L ⌘K too; window shortcuts move to ⌃⌥ | | ● |
+| `cmdkeys` | Command-key shortcuts — **configurable key by key** | | ● |
 
 † **`mediakeys` is the one option that needs your password.** Everything else lives
 entirely in `$HOME`; this one sets a kernel module parameter (`hid_apple.fnmode`), which
@@ -99,10 +98,21 @@ closes the shell, Ctrl+A is beginning-of-line — sending those would be destruc
 has the same split (⌘A is the terminal's select-all, Ctrl+A is readline), but we cannot
 deliver the ⌘ half, so doing nothing beats doing the wrong thing.
 
-`cmdkeys-wm` goes further and is **the option that takes something away** — which is why
-it is separate and off unless you ask. It reclaims the last eight letters (F S T P G L K O)
-for ⌘F Find, ⌘S Save, ⌘T New tab, ⌘O Open and so on, and moves the window-management
-shortcuts that held them to **⌃⌥ + the same letter**:
+### The keybinding editor
+
+`cmdkeys` is not all-or-nothing. Open the panel, press **Edit** beside it, and every
+Command key is listed with its own switch — so you can take ⌘F and leave ⌘T, or start from
+a preset and adjust. Three presets seed the list:
+
+| Preset | Claims |
+|---|---|
+| **None** | nothing |
+| **Minimal** | only letters Omarchy leaves free — costs nothing |
+| **Full Mac** | every letter, including eight that hold window shortcuts |
+
+Full Mac is **the setting that takes something away**, and the editor says so before you
+pick it. Those eight letters (F S T P G L K O) move their window-management shortcuts to
+**⌃⌥ + the same letter**:
 
 | Was | Now | Does |
 |---|---|---|
@@ -118,8 +128,17 @@ K and S already hold sibling functions there, so four of the eight would have ne
 renaming. `SUPER+J` (window split) is left alone — ⌘J is rare enough that displacing a
 working shortcut is not worth it.
 
-With both options on, every Command-key shortcut a Mac user reaches for works, and window
-management is one extra modifier away.
+With Full Mac, every Command-key shortcut a Mac user reaches for works, and window
+management is one extra modifier away. Each row in the editor names what it would displace,
+so nothing is lost by surprise.
+
+The Lua fragment is **generated** from the enabled set on every change, rather than copied
+from a static file like the other options — which is what makes per-key control possible.
+Open the editor straight from a keybinding or menu entry with:
+
+```bash
+qs -p /usr/share/omarchy/shell ipc call local.macifier keys
+```
 
 Planned, not yet built: keybinding menu showing Command / Option / Control instead of
 SUPER / ALT / CTRL; onboarding note that folders bookmark and files star.
