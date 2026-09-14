@@ -5,6 +5,15 @@
 One switch that makes Omarchy feel familiar to someone arriving from macOS — and one
 click that puts everything back exactly as it was.
 
+> **Unofficial, early, and opinionated — deliberately so.**
+> This is not an Omarchy project and is not affiliated with or endorsed by Omarchy or its
+> maintainers. It is an independent experiment by a Mac switcher, built in the open while
+> the switching is still fresh enough to remember what was confusing.
+>
+> **Opinions and contributions are very welcome** — especially disagreement. If a default
+> here is wrong, if something belongs in Minimal that isn't, or if an option breaks on your
+> hardware, open an issue. Arguments about what *should* be in it are as useful as code.
+
 ---
 
 ## Why
@@ -22,6 +31,28 @@ system is broken. That gap is what Macifier addresses.
 
 **The pitch is "make the first hour familiar," not "turn Omarchy into macOS."** The
 opinion stays the default. The switcher gets a ramp.
+
+### Two goals, one switch
+
+Macifier serves two people, and the mode system is what lets it serve both without
+compromising for either:
+
+**Reduce the initial friction.** Most switchers do not want macOS back. They want to stop
+tripping over small invisible differences long enough to actually learn the system —
+then they keep whatever they have grown to prefer and drop the rest. For them Macifier is
+a ramp, used for a week or a month and then partly or wholly switched off. **Minimal** is
+built for exactly this: the handful of things you hit in the first minute, nothing that
+could break, everything reversible.
+
+**Give the full Mac experience to those who want it.** Others genuinely want to be on a
+Mac, in Linux — because their hands will not be retrained, because they move between a
+Mac and this machine daily, or simply because they prefer it. That is a legitimate want
+and not a lesser one. **Full** is for them. It is a much larger job — window management,
+key semantics, system gestures — and it will take a long time and more than one pair of
+hands.
+
+Nobody has to pick a camp. Options are independent, so the ramp user can keep the two
+things they liked, and the full-experience user can leave out the one thing they hate.
 
 ## What it does
 
