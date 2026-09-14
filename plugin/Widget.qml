@@ -34,16 +34,18 @@ Panel {
     "capslock":    "Caps Lock key",
     "mediakeys":   "Media keys on F1-F12",
     "windowtitle": "Window name in bar",
-    "cmdkeys":     "Command key shortcuts"
+    "cmdkeys":     "Command key shortcuts",
+    "cmdkeys-wm":  "Command keys, everything"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
     "capslock":    "Caps Lock works, Compose moves to right ⌘",
     "mediakeys":   "Brightness and volume direct · asks for your password",
     "windowtitle": "Show the focused window's name",
-    "cmdkeys":     "⌘A select all, ⌘Z undo, ⌘N new, ⌘Q close …"
+    "cmdkeys":     "⌘A select all, ⌘Z undo, ⌘N new, ⌘Q close …",
+    "cmdkeys-wm":  "⌘F ⌘S ⌘T ⌘O too · window shortcuts move to ⌃⌥"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "cmdkeys-wm", "windowtitle"]
 
   function refresh() { if (!stateProc.running) stateProc.running = true }
 

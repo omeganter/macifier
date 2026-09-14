@@ -66,6 +66,7 @@ state you get stuck in — flip any single option afterwards and the rest stay p
 | `mediakeys` | F1–F12 do brightness/volume directly, Fn for F-keys † | ● | ● |
 | `windowtitle` | Focused window's name shown in the bar | | ● |
 | `cmdkeys` | ⌘A, ⌘Z, ⌘N, ⌘R, ⌘Q and the rest of the Mac editing set | | ● |
+| `cmdkeys-wm` | ⌘F ⌘S ⌘T ⌘O ⌘P ⌘G ⌘L ⌘K too; window shortcuts move to ⌃⌥ | | ● |
 
 † **`mediakeys` is the one option that needs your password.** Everything else lives
 entirely in `$HOME`; this one sets a kernel module parameter (`hid_apple.fnmode`), which
@@ -98,11 +99,27 @@ closes the shell, Ctrl+A is beginning-of-line — sending those would be destruc
 has the same split (⌘A is the terminal's select-all, Ctrl+A is readline), but we cannot
 deliver the ⌘ half, so doing nothing beats doing the wrong thing.
 
-**Seven letters are deliberately left alone:** F S T P L G K currently hold window
-management (Full screen, Scratchpad, Float toggle, Pseudo, Layout, Grouping, Keybindings).
-Reclaiming those for ⌘F Find, ⌘S Save and so on means *moving* WM shortcuts, which is a
-real cost a user should be able to refuse. That belongs in its own option, not smuggled
-into this one. Not built yet.
+`cmdkeys-wm` goes further and is **the option that takes something away** — which is why
+it is separate and off unless you ask. It reclaims the last eight letters (F S T P G L K O)
+for ⌘F Find, ⌘S Save, ⌘T New tab, ⌘O Open and so on, and moves the window-management
+shortcuts that held them to **⌃⌥ + the same letter**:
+
+| Was | Now | Does |
+|---|---|---|
+| `SUPER+F` | `CTRL+ALT+F` | Full screen |
+| `SUPER+S` | `CTRL+ALT+S` | Toggle scratchpad |
+| `SUPER+T` | `CTRL+ALT+T` | Float/tile toggle |
+| `SUPER+O` | `CTRL+ALT+O` | Pop window out |
+| `SUPER+P` `SUPER+G` `SUPER+L` `SUPER+K` | `CTRL+ALT+…` | Pseudo, Grouping, Layout, Keybindings |
+
+`CTRL+ALT` was chosen because the entire namespace is empty in stock Omarchy, so nothing
+collides and every displaced shortcut keeps its own letter. `SUPER+ALT` was rejected: F, G,
+K and S already hold sibling functions there, so four of the eight would have needed
+renaming. `SUPER+J` (window split) is left alone — ⌘J is rare enough that displacing a
+working shortcut is not worth it.
+
+With both options on, every Command-key shortcut a Mac user reaches for works, and window
+management is one extra modifier away.
 
 Planned, not yet built: keybinding menu showing Command / Option / Control instead of
 SUPER / ALT / CTRL; onboarding note that folders bookmark and files star.

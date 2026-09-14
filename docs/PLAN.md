@@ -284,3 +284,76 @@ gated on `omarchy-hw-apple-silicon` there regardless.
 Phase 0, item 1 only: the Hyprland fragment with `natural_scroll`, written directly to the
 state directory, toggled on and off by hand to prove the round trip is clean. One file, one
 setting, no repo, no proposal. Everything else waits on that working.
+
+---
+
+# Design: ⌘Tab app switcher with an app bar
+
+**Status:** DESIGNED, not built · 2026-09-14 · Full only
+
+## What it should do
+Hold ⌘, tap Tab to walk a horizontal bar of **running applications** — icons, most-recent
+first — release ⌘ to switch. ⌘` cycles windows *within* the focused app. This is the single
+most-used interaction on a Mac after copy/paste, and the one whose absence is felt hourly.
+
+## What exists today
+| Keys | Behaviour | Verdict |
+|---|---|---|
+| `SUPER+TAB` | Next **workspace** | Wrong target — must move |
+| `ALT+TAB` | Focus next **window** | Right idea, no grouping, no overlay |
+| `SUPER+SHIFT+TAB` | Previous workspace | Must move |
+
+`ALT+TAB` already cycles windows, so the gap is not switching — it is **grouping by
+application** and **showing what you are switching to**.
+
+## Feasibility: confirmed
+Hold-to-cycle needs modifier-*release* detection, and Omarchy's bind helper already
+supports it — `default/hypr/bindings/voxtype.lua:4` uses `{ release = true }` for
+push-to-talk. So the shape is:
+
+```lua
+o.bind("SUPER + TAB", "App switcher", advance)            -- open, then advance
+o.bind("SUPER_L",     "Commit",       commit, { release = true })  -- release to switch
+```
+
+The overlay itself is a Quickshell **overlay-kind plugin**, the same shape Omarchy already
+ships for the clipboard, emoji picker and image picker — so there is a working template in
+tree rather than a new UI surface to invent.
+
+## Grouping by app
+`hyprctl clients -j` gives `class` and `title` per window. Group by `class`, order by
+most-recently-focused, resolve an icon from the matching `.desktop` file. A window with no
+desktop entry falls back to its class name as text — better than a blank tile.
+
+## Where the displaced workspace shortcuts go
+`SUPER+TAB` / `SUPER+SHIFT+TAB` must move, the same problem `cmdkeys-wm` already solved
+for letters. `CTRL+ALT+TAB` is **not** free (Focus next monitor). Candidates, in order:
+`SUPER+ALT+TAB` (appears free), or fold workspace cycling into the existing
+`SUPER+CTRL+←/→` family if one exists. **Check before building.**
+
+## Prior art — check before writing code
+- [omacom/omarchy#7838](https://github.com/omacom/omarchy/issues/7838) — **open** — "Proposal:
+  macOS-friendly Tab keybindings (SUPER+TAB for windows, not workspaces)". Directly this
+  idea, already raised upstream. Read the thread first; if it is moving, contribute there
+  rather than duplicating, and Macifier just enables it.
+- `hyprswitch` (AUR, v5.0.0, `arch=any`, only 2 votes) — an existing Hyprland app switcher
+  with hold-modifier support. Evaluate before building: if it is good, the option becomes
+  "install and bind", which is far less to maintain. Low vote count argues for caution.
+
+## Risks
+1. **Synthetic key state.** `clipboard.lua` carries a down/up split workaround for Hyprland
+   leaving injected key state stuck (hyprwm/Hyprland#14099). A switcher holding a modifier
+   is the most likely place to hit that class of bug. Prototype the release-bind alone,
+   before any UI.
+2. **Reversibility.** An overlay plugin is a separate package from the Lua fragment, so
+   `off` must both remove the fragment and disable the plugin. Same two-surface problem as
+   `windowtitle`; reuse that pattern.
+3. **Scope.** This is the first option needing real UI rather than config. It is plausibly
+   a bigger job than everything else in Macifier combined — and a good candidate for the
+   first outside contributor.
+
+## Order of work
+1. Read #7838; decide contribute-vs-build
+2. Evaluate `hyprswitch` on aarch64
+3. Prototype the release-bind alone — no UI — to prove hold-to-cycle is reliable
+4. Only then build the overlay
