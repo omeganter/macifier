@@ -91,6 +91,10 @@ Auto-hides at the bottom. Push the pointer to the bottom edge and it slides up.
 Pinned apps first, then anything running, with a dot under what is open. Click
 to launch, or to raise it if it is already running.
 
+Both the dock and ⌘Tab also turn off Hyprland's pointer warping
+(`cursor:no_warps`), which otherwise flings the cursor to the centre of
+whatever window you focus. macOS never moves the pointer on its own.
+
 Press **Edit** beside Dock in the panel to choose what is pinned, or:
 
 ```bash

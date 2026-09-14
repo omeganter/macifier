@@ -392,10 +392,12 @@ option_on() {
       cp "$SHARE/options/appswitcher.lua" "$HYPR_DIR/macifier-appswitcher.lua"
       reload ;;
     dock)
-      mkdir -p "$STATE"
+      mkdir -p "$STATE" "$HYPR_DIR"
       [[ -s $DOCKSET ]] || dock_defaults > "$DOCKSET"
       touch "$STATE/dock.enabled"
-      omarchy plugin enable local.macifier-dock >/dev/null 2>&1 || true ;;
+      cp "$SHARE/options/dock.lua" "$HYPR_DIR/macifier-dock.lua"
+      omarchy plugin enable local.macifier-dock >/dev/null 2>&1 || true
+      reload ;;
   esac
 }
 
@@ -411,8 +413,9 @@ option_off() {
       omarchy plugin disable local.macifier-switcher >/dev/null 2>&1 || true
       reload ;;
     dock)
-      rm -f "$STATE/dock.enabled"
-      omarchy plugin disable local.macifier-dock >/dev/null 2>&1 || true ;;
+      rm -f "$STATE/dock.enabled" "$HYPR_DIR/macifier-dock.lua"
+      omarchy plugin disable local.macifier-dock >/dev/null 2>&1 || true
+      reload ;;
   esac
 }
 

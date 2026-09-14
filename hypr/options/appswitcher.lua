@@ -9,6 +9,11 @@
 --
 -- Workspace cycling is not removed, only moved one modifier along.
 
+-- Focusing a window warps the pointer to its centre unless told otherwise, so
+-- Cmd+Tab would fling the cursor across the screen on every switch. macOS never
+-- moves the pointer on its own.
+hl.config({ cursor = { no_warps = true } })
+
 hl.unbind("SUPER + TAB")
 hl.unbind("SUPER + SHIFT + TAB")
 
