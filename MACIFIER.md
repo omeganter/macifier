@@ -5,6 +5,13 @@ Makes Omarchy feel like a Mac. One switch, fully reversible.
 Unofficial. Not affiliated with Omarchy. Opinions and pull requests welcome,
 including "that default is wrong".
 
+> **Tested on one machine.** A MacBook Pro 14-inch (M1 Pro, 2021): `aarch64`,
+> Apple Silicon, one display at scale 2, Spanish layout, Apple's own keyboard.
+> None of it has run on x86_64, on a non-Apple keyboard, or on two monitors.
+> `mediakeys` in particular sets an Apple-only kernel parameter and simply
+> refuses elsewhere. If you try it on other hardware, the bug report is the
+> contribution.
+
 ```bash
 ./install.sh
 omarchy plugin enable local.macifier right

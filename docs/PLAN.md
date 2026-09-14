@@ -264,6 +264,16 @@ gated on `omarchy-hw-apple-silicon` there regardless.
    documented suggestion instead.
 5. **`stable` vs `edge`.** Verify every claim on `stable` before proposing. This machine runs
    `omarchy-dev` on `edge`.
+6. **One machine, one architecture.** Everything here has been tested on exactly one
+   computer: a MacBook Pro 14-inch (M1 Pro, 2021) — `aarch64`, Apple Silicon, a single
+   display at scale 2, Spanish keyboard layout, Apple internal keyboard. Nothing has run
+   on x86_64, on a non-Apple keyboard, at scale 1, or across two monitors.
+   *Where it bites:* `mediakeys` writes the Apple-only `hid_apple.fnmode`; `capslock` and
+   `cmdkeys` assume a Mac keyboard's physical layout; the dock and the switcher resolve
+   Nerd Font glyphs and lay out against `hyprctl` geometry that has only ever been HiDPI.
+   *Why it matters for Phase 4:* reviewers upstream will be on x86_64 by default, so the
+   first outside test is also the first test on other hardware. Say so when proposing,
+   rather than letting them find out.
 
 ---
 

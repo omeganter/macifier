@@ -424,6 +424,14 @@ switcher loses exist.
    Use Omarchy's own `Ui/` primitives and the active theme. The *organisation*
    is what a Mac user recognises, not the greys.
 
+6. **Every tag in §3 was decided on one machine.** An M1 Pro MacBook at scale 2
+   — see `docs/PLAN.md` risk 6. **Omarchy** rows were confirmed here and nowhere
+   else, and a few are hardware-shaped: brightness resolves through
+   `-apple`/`-ddc` variants, auto-brightness needs a MacBook sensor, keyboard
+   backlight needs Apple's. On x86_64 some **Omarchy** rows are really
+   **Not on Linux**, and some **Not on Linux** rows may exist after all.
+   Re-check the tags on the first non-Apple machine we get hold of.
+
 ---
 
 ## 7. Open questions
