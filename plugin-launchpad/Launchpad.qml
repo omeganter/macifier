@@ -308,7 +308,7 @@ Item {
                   text: tile.modelData.name
                   color: root.foreground
                   font.family: Style.font.family
-                  font.pixelSize: Style.font.small
+                  font.pixelSize: Style.font.bodySmall
                   elide: Text.ElideRight
                   maximumLineCount: 2
                   wrapMode: Text.WordWrap
