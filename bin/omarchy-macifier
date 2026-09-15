@@ -96,6 +96,28 @@ settings_inventory() {
   cat "$SETTINGS_INV"
 }
 
+# Which plugins are actually here. A row that offers to install something the
+# user already has is worse than no row at all — it says we did not look. The
+# window matches a row's `pluginId` against this and changes what it offers.
+#
+# `omarchy plugin list` is a table: ID first column, STATE second. If the
+# command is missing or its shape changes, an empty map degrades every plugin
+# row to "click to install", which is the old behaviour rather than a break.
+settings_plugins() {
+  if ! command -v omarchy >/dev/null 2>&1; then
+    echo '{"installed":{}}'
+    return
+  fi
+  omarchy plugin list 2>/dev/null | awk '
+    NR == 1 && $1 == "ID" { next }
+    NF >= 2 && $1 != "" {
+      if (out != "") out = out ","
+      out = out "\"" $1 "\":\"" $2 "\""
+    }
+    END { printf "{\"installed\":{%s}}\n", out }
+  '
+}
+
 # --- trash -------------------------------------------------------------------
 # Linux already has a trash and Omarchy does not touch it: the freedesktop.org
 # spec puts the file in ~/.local/share/Trash/files and a .trashinfo record
@@ -645,9 +667,10 @@ case "${1:-status}" in
   settings) shift
            case "${1:-open}" in
              inventory)          settings_inventory ;;
+             plugins)            settings_plugins ;;
              open|hide|toggle)   omarchy-shell -q local.macifier-settings "$1" ;;
              pane)               omarchy-shell -q local.macifier-settings pane "${2:?pane id required}" ;;
-             *) echo "usage: omarchy-macifier settings [open|hide|toggle|pane <id>|inventory]" >&2; exit 1 ;;
+             *) echo "usage: omarchy-macifier settings [open|hide|toggle|pane <id>|inventory|plugins]" >&2; exit 1 ;;
            esac ;;
   key)     shift
            case "${1:-}" in

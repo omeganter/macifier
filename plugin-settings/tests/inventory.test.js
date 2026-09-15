@@ -120,6 +120,17 @@ test("a run action is a non-empty argv of strings", () => {
   }
 });
 
+// A row that offers to install something already present says we did not look.
+// The window can only tell the difference when the row carries the plugin's id.
+test("a plugin id, where given, is a plausible plugin id", () => {
+  for (const { row } of allRows) {
+    if (!row.pluginId) continue;
+    assert.strictEqual(row.tag, "plugin", `row "${row.label}" has a pluginId but is not tagged plugin`);
+    assert.ok(/^[a-z0-9]+([.-][a-z0-9]+)+$/.test(row.pluginId),
+      `row "${row.label}" has an implausible pluginId: ${row.pluginId}`);
+  }
+});
+
 test("a plugin row names the plugin and installs over https", () => {
   for (const { row } of allRows) {
     if (row.tag !== "plugin") continue;

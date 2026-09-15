@@ -37,6 +37,7 @@ Item {
   property int paneIndex: 0
   property string filterText: ""
   property var optionState: ({})    // option name -> bool, for Macifier rows
+  property var pluginState: ({})    // plugin id -> "enabled" | "disabled"
   property string loadError: ""
 
   // --- theme -----------------------------------------------------------------
@@ -122,6 +123,23 @@ Item {
   function refresh() {
     if (!inventoryProc.running) inventoryProc.running = true
     if (!statusProc.running) statusProc.running = true
+    if (!pluginsProc.running) pluginsProc.running = true
+  }
+
+  // What a plugin row should say. A row that offers to install something the
+  // user already has is worse than no row: it says we did not look.
+  //   "enabled"  it is here and running — nothing to offer
+  //   "disabled" it is here but switched off — offer to switch it on
+  //   "missing"  offer to install it
+  //   "unknown"  we never learned this plugin's id, so we cannot tell; the
+  //              row still offers to install, which is the old behaviour
+  function pluginStatus(r) {
+    if (!r || r.tag !== "plugin") return "unknown"
+    if (!r.pluginId) return "unknown"
+    var s = pluginState[r.pluginId]
+    if (s === "enabled") return "enabled"
+    if (s === "disabled") return "disabled"
+    return "missing"
   }
 
   // --- rows ------------------------------------------------------------------
@@ -173,10 +191,20 @@ Item {
 
   function isGrey(tag) { return tag === "planned" || tag === "notonlinux" }
 
+  function pluginLine(r) {
+    var s = pluginStatus(r)
+    if (s === "enabled") return "installed"
+    if (s === "disabled") return "installed, switched off — click to enable"
+    return "click to install"
+  }
+
   // A row acts only if something is there to act on. Grey rows never do —
-  // that is the whole contract they carry.
+  // that is the whole contract they carry. An already-running plugin has
+  // nothing left to offer either.
   function isActionable(r) {
-    return !!r && !!r.action && !isGrey(r.tag)
+    if (!r || !r.action || isGrey(r.tag)) return false
+    if (r.tag === "plugin" && pluginStatus(r) === "enabled") return false
+    return true
   }
 
   // The state dot on a Macifier row. `undefined` means "this option has no
@@ -198,6 +226,12 @@ Item {
   function activate(r) {
     if (!isActionable(r)) return
     var a = r.action
+    // Installed but switched off: switch it on rather than re-adding it, which
+    // would ask the user to reinstall something they already have.
+    if (r.tag === "plugin" && pluginStatus(r) === "disabled") {
+      run(["omarchy", "plugin", "enable", String(r.pluginId)])
+      return
+    }
     if (a.run) run(["omarchy-macifier"].concat(a.run))
     else if (a.menu) run(["omarchy", "menu", "summon", String(a.menu)])
     else if (a.plugin) run(["omarchy", "plugin", "add", String(a.plugin), "--enable"])
@@ -213,8 +247,9 @@ Item {
   Process {
     id: actionProc
     command: ["true"]
-    // Whatever just ran may have flipped an option; re-read rather than assume.
-    onExited: if (root.opened) statusProc.running = true
+    // Whatever just ran may have flipped an option or added a plugin; re-read
+    // both rather than assume.
+    onExited: if (root.opened) root.refresh()
   }
 
   // `settings inventory` rather than a hard-coded path: the QML should not know
@@ -234,6 +269,17 @@ Item {
           root.panes = []
           root.loadError = "Could not read the settings inventory."
         }
+      }
+    }
+  }
+
+  Process {
+    id: pluginsProc
+    command: ["omarchy-macifier", "settings", "plugins"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.pluginState = JSON.parse(String(text)).installed || ({}) }
+        catch (e) { root.pluginState = ({}) }
       }
     }
   }
@@ -640,9 +686,9 @@ Item {
                 Text {
                   visible: rowItem.r.tag === "plugin" && !!rowItem.r.pluginName
                   width: parent.width
-                  text: rowItem.r.pluginName + " — click to install"
+                  text: rowItem.r.pluginName + " — " + root.pluginLine(rowItem.r)
                   color: root.foreground
-                  opacity: 0.4
+                  opacity: root.pluginStatus(rowItem.r) === "enabled" ? 0.5 : 0.4
                   textFormat: Text.PlainText
                   elide: Text.ElideRight
                   font.family: root.fontFamily
