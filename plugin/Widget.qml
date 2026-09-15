@@ -40,7 +40,8 @@ Panel {
     "windowtitle": "Window name in bar",
     "appswitcher": "⌘Tab switches apps",
     "dock":        "Dock",
-    "launchpad":   "Launchpad"
+    "launchpad":   "Launchpad",
+    "gestures":    "Trackpad gestures"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
@@ -50,9 +51,10 @@ Panel {
     "windowtitle": "Show the focused window's name",
     "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces",
     "dock":        "Auto-hiding app bar along the bottom · tap Edit to choose",
-    "launchpad":   "Every app in a grid · ⌘⌥A, or the dock tile"
+    "launchpad":   "Every app in a grid · ⌘⌥A, or the dock tile",
+    "gestures":    "3 fingers for spaces · up/down for Mission Control and Exposé · 4-finger pinch for Launchpad"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "launchpad", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "launchpad", "gestures", "windowtitle"]
 
   // Every option the CLI reports — `order` only decides the order, never
   // membership. The panel used to iterate `order` itself, so an option added

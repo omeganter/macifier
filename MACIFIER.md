@@ -38,6 +38,7 @@ Then click ` Macifier` in the bar and pick what you want.
 | `appswitcher` | ⌘Tab switches apps, not workspaces, with an icon bar | | ● |
 | `dock` | Auto-hiding dock of favourite apps along the bottom | | ● |
 | `launchpad` | Every installed app in a full-screen grid | | ● |
+| `gestures` | Mac trackpad gestures: spaces, Mission Control, Exposé, Launchpad | | ● |
 
 Options are independent. Presets just set a group, so you can flip any one
 afterwards and the rest stay put.
@@ -210,6 +211,36 @@ point is that you look instead of typing.
 Applications marked `NoDisplay` are left out. They are the entries a desktop is
 explicitly asked not to show — MIME handlers and per-app helpers — and including
 them is what makes most Linux app menus unusable.
+
+## Gestures
+
+The macOS trackpad set, once you turn `gestures` on:
+
+| Gesture | Does |
+|---|---|
+| Three fingers sideways | Move between spaces, following your fingers |
+| Three fingers up | Mission Control |
+| Three fingers down | App Exposé |
+| Four fingers pinched in | Launchpad |
+
+Which shapes Hyprland actually delivers was measured, not assumed: a probe bound
+every candidate to a file touch. Three and four fingers work in all four
+directions, and four-finger pinch works in both — so Launchpad gets its real Mac
+gesture rather than an approximation.
+
+**Two fingers can never be a gesture here**, and no amount of configuration will
+change it. libinput classifies two fingers as a scroll axis and only three or
+more as a swipe, so nothing in Hyprland ever sees a two-finger swipe. Its own
+log is blunt about it: `[2fg] GESTURE_EVENT_SCROLL_START`. That is why Omarchy's
+own commented examples only ever say `fingers = 3`, and why Launchpad reads page
+swipes as a wheel instead.
+
+Mission Control and Exposé are plugins Macifier recommends rather than ships
+(see [docs/SETTINGS.md](docs/SETTINGS.md)). Those two gestures are best-effort:
+without the plugin the gesture does nothing at all rather than erroring.
+
+Omarchy already offers these lines, commented out, in `config/hypr/input.lua`.
+This turns on what was on the shelf.
 
 ## Next
 

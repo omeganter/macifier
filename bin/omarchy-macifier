@@ -33,6 +33,7 @@ OPTIONS=(
   "appswitcher|switcher|Command+Tab switches apps, not workspaces"
   "dock|dock|Auto-hiding dock of favourite apps along the bottom"
   "launchpad|launchpad|Full-screen grid of every installed application"
+  "gestures|hypr|Trackpad gestures: spaces, Mission Control, Expose, Launchpad"
 )
 
 DOCKSET="$STATE/dock"
@@ -179,7 +180,7 @@ PYEOF
 }
 
 MINIMAL=(scroll capslock mediakeys)
-FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher dock launchpad)
+FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher dock launchpad gestures)
 
 # --- the Command-key table ---------------------------------------------------
 # letter|mac label|group|displaced Omarchy binding|Lua dispatcher for it
