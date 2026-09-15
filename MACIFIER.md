@@ -2,6 +2,10 @@
 
 Makes Omarchy feel like a Mac. One switch, fully reversible.
 
+**Beta** — `0.1.x`, no tagged release. Reversibility is the part that is
+tested; the set of options is still moving and names can change between
+commits. Pin a commit if you build on one.
+
 Unofficial. Not affiliated with Omarchy. Opinions and pull requests welcome,
 including "that default is wrong".
 
@@ -100,6 +104,19 @@ Tab always does. The overlay takes exclusive keyboard focus and sees the event.
 Auto-hides at the bottom. Push the pointer to the bottom edge and it slides up.
 Pinned apps first, then anything running, with a dot under what is open. Click
 to launch, or to raise it if it is already running.
+
+Icons magnify under the pointer as a wave, the way the Mac dock does — the one
+under the cursor grows most, its neighbours less, and the row spreads to make
+room rather than letting them collide.
+
+That wave is not ours. It is [macOS Magnify
+Dock](https://github.com/wisangdg/omarchy-magnify-dock) by Wisang Drillian Geni
+(wdg), MIT licensed, and we use two functions from it unchanged; the rest of
+his dock we left alone, because ours already had tiles, a menu, barred
+placeholders and a trash. Full notice in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). If you want the whole thing
+rather than our take on it, install his — it is on the marketplace as
+`wdg.dock` and it is very good.
 
 Both the dock and ⌘Tab also turn off Hyprland's pointer warping
 (`cursor:no_warps`), which otherwise flings the cursor to the centre of
@@ -202,3 +219,9 @@ visible.
 
 [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) lists the Omarchy newcomer
 problems this came out of.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). The same licence Omarchy itself uses, and what
+nearly every plugin in the marketplace uses, so code can move between them
+without a licence conversation first.
