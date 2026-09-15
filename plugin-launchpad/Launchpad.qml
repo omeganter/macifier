@@ -126,6 +126,46 @@ Item {
     if (Math.floor(index / perPage) !== page) index = page * perPage
   }
 
+  // --- two-finger swipe ------------------------------------------------------
+  //
+  // A two-finger swipe is not a gesture and cannot be bound like one. libinput
+  // reports two fingers as scroll axis events and only three or more as a swipe
+  // gesture, which is why Omarchy's own gesture config only ever speaks of
+  // `fingers = 3` and why no Hyprland bind can catch this. The overlay has to
+  // read it as a wheel, so it does.
+  //
+  // A trackpad sends a long stream of small deltas rather than one event, so a
+  // single swipe has to be accumulated to a threshold and then locked out
+  // briefly. Without the lockout one swipe flies through every page.
+  property double swipeAccum: 0
+  property double lastTurn: 0
+
+  readonly property int swipeThreshold: 220   // eighths of a degree
+  readonly property int swipeCooldownMs: 320
+
+  function swiped(dx, dy) {
+    if (pageCount < 2) return
+    // The dominant axis, so a slightly diagonal swipe still counts and a
+    // vertical one is not simply ignored — on a wide grid people swipe both
+    // ways and nothing happening reads as broken.
+    var d = Math.abs(dx) >= Math.abs(dy) ? dx : dy
+    if (d === 0) return
+
+    var now = Date.now()
+    if (now - lastTurn < swipeCooldownMs) return
+
+    // Direction reversing mid-swipe means a new intent, not a continuation.
+    if ((d > 0) !== (swipeAccum > 0)) swipeAccum = 0
+    swipeAccum += d
+
+    if (Math.abs(swipeAccum) < swipeThreshold) return
+    // One line to flip if this comes out backwards on your trackpad: the sign
+    // here is the whole mapping.
+    setPage(page + (swipeAccum > 0 ? 1 : -1))
+    swipeAccum = 0
+    lastTurn = now
+  }
+
   function typed(ch) {
     query += ch
     index = 0
@@ -194,6 +234,20 @@ Item {
       anchors.fill: parent
       focus: true
       Keys.priority: Keys.BeforeItem
+
+      // Anywhere in the overlay, not just over the grid: on a Mac the swipe
+      // works wherever the pointer happens to be sitting.
+      WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onWheel: function(event) {
+          // pixelDelta is what a trackpad actually reports; angleDelta is the
+          // mouse-wheel equivalent and the fallback. Scale the pixel figure so
+          // one threshold serves both.
+          var dx = event.pixelDelta.x !== 0 ? event.pixelDelta.x * 6 : event.angleDelta.x
+          var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y * 6 : event.angleDelta.y
+          root.swiped(dx, dy)
+        }
+      }
 
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
@@ -294,6 +348,16 @@ Item {
             columns: root.columns
             spacing: Style.space(10)
 
+            // Sized to a whole page, not to this page's contents. A short last
+            // page would otherwise shrink the card under you — the window
+            // jumps as you turn to it and jumps back when you leave. macOS
+            // keeps the grid the same size and lets the last page be sparse,
+            // and it is right: the surface you are navigating should not move
+            // while you navigate it. The same applies while filtering, where
+            // every keystroke would otherwise resize the window.
+            width: root.columns * panel.cell + (root.columns - 1) * spacing
+            height: root.rows * panel.cell + (root.rows - 1) * spacing
+
             Repeater {
               model: root.shown.slice(root.page * root.perPage, (root.page + 1) * root.perPage)
 
@@ -379,12 +443,15 @@ Item {
             }
           }
 
-          // Page dots. Hidden on a single page, because one dot tells you
-          // nothing and still costs a row of space.
+          // Page dots. A single dot tells you nothing, so on one page they go
+          // invisible — but they keep their space rather than being removed.
+          // Dropping the row shrinks the card the instant a filter narrows the
+          // results to one page, which is the same jump the fixed grid above
+          // exists to prevent, except it would fire on every keystroke.
           Row {
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.space(8)
-            visible: root.pageCount > 1
+            opacity: root.pageCount > 1 ? 1 : 0
 
             Repeater {
               model: root.pageCount
@@ -404,18 +471,24 @@ Item {
             }
           }
 
-          // Only ever seen while filtering, so it names the query rather than
-          // saying "no results" into the void.
-          Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            visible: root.shown.length === 0
-            textFormat: Text.PlainText
-            text: "Nothing matches “" + root.query + "”"
-            color: root.foreground
-            opacity: 0.7
-            font.family: Style.font.family
-            font.pixelSize: Style.font.body
-          }
+        }
+
+        // Only ever seen while filtering, so it names the query rather than
+        // saying "no results" into the void. Centred over the grid rather than
+        // placed under it: as a row in the column it would add its own height
+        // the moment it appeared, growing the card exactly when the user is
+        // typing and least wants it moving.
+        Text {
+          // Centred on the card, not on the grid: the grid is a child of the
+          // column, so it is not a sibling of this and cannot be anchored to.
+          anchors.centerIn: parent
+          visible: root.shown.length === 0
+          textFormat: Text.PlainText
+          text: "Nothing matches “" + root.query + "”"
+          color: root.foreground
+          opacity: 0.7
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
         }
       }
     }
