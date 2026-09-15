@@ -39,7 +39,8 @@ Panel {
     "cmdkeys":     "Command key shortcuts",
     "windowtitle": "Window name in bar",
     "appswitcher": "⌘Tab switches apps",
-    "dock":        "Dock"
+    "dock":        "Dock",
+    "launchpad":   "Launchpad"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
@@ -48,9 +49,32 @@ Panel {
     "cmdkeys":     "⌘A ⌘Z ⌘N ⌘Q … tap Edit to choose",
     "windowtitle": "Show the focused window's name",
     "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces",
-    "dock":        "Auto-hiding app bar along the bottom · tap Edit to choose"
+    "dock":        "Auto-hiding app bar along the bottom · tap Edit to choose",
+    "launchpad":   "Every app in a grid · ⌘⌥A, or the dock tile"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "launchpad", "windowtitle"]
+
+  // Every option the CLI reports — `order` only decides the order, never
+  // membership. The panel used to iterate `order` itself, so an option added
+  // to the CLI was simply invisible here until someone remembered to add it in
+  // two more places. That shipped twice: appswitcher, then launchpad. Anything
+  // the CLI knows about and this file does not now lands at the end with the
+  // CLI's own description under it, which is wrong-looking rather than absent,
+  // and wrong-looking gets fixed.
+  readonly property var rows: {
+    var out = [], seen = ({}), i
+    for (i = 0; i < order.length; i++) {
+      if (opts[order[i]] !== undefined) { out.push(order[i]); seen[order[i]] = true }
+    }
+    for (var k in opts) if (!seen[k]) out.push(k)
+    return out
+  }
+
+  function hintFor(id) {
+    if (hints[id]) return hints[id]
+    var o = opts[id]
+    return (o && o.description) ? String(o.description) : ""
+  }
 
   function refresh() {
     if (!stateProc.running) stateProc.running = true
@@ -225,7 +249,7 @@ Panel {
       PanelSectionHeader { text: "Options"; Layout.fillWidth: true }
 
       Repeater {
-        model: root.order
+        model: root.rows
         delegate: RowLayout {
           required property var modelData
           Layout.fillWidth: true
@@ -246,7 +270,7 @@ Panel {
             Text {
               Layout.fillWidth: true
               textFormat: Text.PlainText
-              text: root.hints[modelData] || ""
+              text: root.hintFor(modelData)
               color: Qt.darker(Color.foreground, 1.5)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.caption

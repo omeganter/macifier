@@ -560,9 +560,13 @@ status_json() {
   while read -r n; do
     [[ $first -eq 1 ]] || printf ','
     first=0
-    printf '"%s":{"on":%s,"available":%s}' "$n" \
+    # The description travels with the state so the panel can render an option
+    # it has no hand-written copy for. Without it a new option is invisible
+    # there, which has now shipped twice.
+    printf '"%s":{"on":%s,"available":%s,"description":"%s"}' "$n" \
       "$(is_on "$n" && echo true || echo false)" \
-      "$(opt_available "$n" && echo true || echo false)"
+      "$(opt_available "$n" && echo true || echo false)" \
+      "$(opt_desc "$n")"
   done < <(opt_names)
   printf '}}\n'
 }
