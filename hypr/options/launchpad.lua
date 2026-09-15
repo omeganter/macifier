@@ -1,0 +1,15 @@
+-- Macifier option: launchpad
+--
+-- A full-screen grid of every installed application. The Mac key for this is
+-- F4, and that is not available here: `mediakeys` sets hid_apple's fnmode so
+-- the top row sends its media function first, which is the whole point of that
+-- option. Binding the literal F4 would mean pressing Fn+F4 for Launchpad — a
+-- worse shortcut than none.
+--
+-- So the keyboard route is SUPER+ALT+A, for Applications. SUPER+A is left
+-- alone deliberately: `cmdkeys` gives that to Select All, and a Mac user's
+-- hands want ⌘A to select, not to open a grid of apps.
+--
+-- The dock tile is the primary way in regardless, the same as on a Mac, where
+-- most people never learn F4 at all.
+o.bind("SUPER + ALT + A", "Launchpad", "omarchy-shell local.macifier-launchpad toggle")

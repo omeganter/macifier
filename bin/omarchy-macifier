@@ -32,6 +32,7 @@ OPTIONS=(
   "cmdkeys|keys|Command-key shortcuts (configurable key by key)"
   "appswitcher|switcher|Command+Tab switches apps, not workspaces"
   "dock|dock|Auto-hiding dock of favourite apps along the bottom"
+  "launchpad|launchpad|Full-screen grid of every installed application"
 )
 
 DOCKSET="$STATE/dock"
@@ -178,7 +179,7 @@ PYEOF
 }
 
 MINIMAL=(scroll capslock mediakeys)
-FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher dock)
+FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher dock launchpad)
 
 # --- the Command-key table ---------------------------------------------------
 # letter|mac label|group|displaced Omarchy binding|Lua dispatcher for it
@@ -282,6 +283,7 @@ is_on() {
     keys) [[ -s $KEYSET ]] ;;
     switcher) [[ -f "$HYPR_DIR/macifier-appswitcher.lua" ]] ;;
     dock) [[ -f "$STATE/dock.enabled" ]] ;;
+    launchpad) [[ -f "$HYPR_DIR/macifier-launchpad.lua" ]] ;;
   esac
 }
 
@@ -477,6 +479,10 @@ option_on() {
       cp "$SHARE/options/dock.lua" "$HYPR_DIR/macifier-dock.lua"
       omarchy plugin enable local.macifier-dock >/dev/null 2>&1 || true
       reload ;;
+    launchpad)
+      omarchy plugin enable local.macifier-launchpad >/dev/null 2>&1 || true
+      cp "$SHARE/options/launchpad.lua" "$HYPR_DIR/macifier-launchpad.lua"
+      reload ;;
   esac
 }
 
@@ -494,6 +500,10 @@ option_off() {
     dock)
       rm -f "$STATE/dock.enabled" "$HYPR_DIR/macifier-dock.lua"
       omarchy plugin disable local.macifier-dock >/dev/null 2>&1 || true
+      reload ;;
+    launchpad)
+      rm -f "$HYPR_DIR/macifier-launchpad.lua"
+      omarchy plugin disable local.macifier-launchpad >/dev/null 2>&1 || true
       reload ;;
   esac
 }

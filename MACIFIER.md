@@ -33,6 +33,7 @@ Then click ` Macifier` in the bar and pick what you want.
 | `windowtitle` | Focused window's name in the bar | | ● |
 | `appswitcher` | ⌘Tab switches apps, not workspaces, with an icon bar | | ● |
 | `dock` | Auto-hiding dock of favourite apps along the bottom | | ● |
+| `launchpad` | Every installed app in a full-screen grid | | ● |
 
 Options are independent. Presets just set a group, so you can flip any one
 afterwards and the rest stay put.
@@ -127,7 +128,7 @@ wondering whether you looked in the wrong place.
 ### The barred tiles
 
 After a separator sit the Mac dock staples Macifier does not have yet —
-Launchpad, Mission Control, System Settings, Stage Manager — drawn grey
+Mission Control, System Settings, Stage Manager — drawn grey
 with a bar struck through. They are reminders, not buttons; clicking one says
 what it will be and which phase it belongs to.
 
@@ -166,6 +167,30 @@ omarchy-macifier dock trash off      # hide the tile
 ```
 
 Needs `gio` (ships with glib2). Without it the tile simply does not appear.
+
+## Launchpad
+
+Every installed application, in a grid, full screen. `SUPER+ALT+A`, or the
+Launchpad tile in the dock.
+
+Type to filter. Arrow keys walk the grid and carry on across pages, so the
+selection never gets stuck at an edge. Enter launches, click launches, Escape
+clears what you typed and a second Escape closes.
+
+The Mac key for this is F4, and we cannot use it: `mediakeys` makes the top row
+send its media function first, which is the entire point of that option, so
+literal F4 would mean pressing Fn+F4. `SUPER+A` is left alone too — `cmdkeys`
+gives that to Select All, and a Mac user's hands want ⌘A to select.
+
+This is the one Mac staple with nothing to adopt. Omarchy has fifteen docks and
+a dozen Mission Controls; Launchpad had no published plugin at all, so it is
+built rather than recommended. It deliberately does not fuzzy-match or rank:
+Omarchy's menu and Spotlight are both search-first already, and Launchpad's
+point is that you look instead of typing.
+
+Applications marked `NoDisplay` are left out. They are the entries a desktop is
+explicitly asked not to show — MIME handlers and per-app helpers — and including
+them is what makes most Linux app menus unusable.
 
 ## Next
 

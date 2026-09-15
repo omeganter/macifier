@@ -10,13 +10,6 @@
   ],
   "placeholders": [
     {
-      "id": "launchpad",
-      "name": "Launchpad",
-      "glyph": "",
-      "phase": "P2",
-      "note": "Full-screen grid of every app"
-    },
-    {
       "id": "missioncontrol",
       "name": "Mission Control",
       "glyph": "",

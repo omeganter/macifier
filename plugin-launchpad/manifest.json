@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "local.macifier-launchpad",
+  "name": "Macifier Launchpad",
+  "version": "0.1.0",
+  "author": "kolyk",
+  "license": "MIT",
+  "description": "Full-screen grid of every installed application. Type to filter, Enter to launch.",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "Launchpad.qml" }
+}
