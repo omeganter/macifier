@@ -187,10 +187,10 @@ Needs `gio` (ships with glib2). Without it the tile simply does not appear.
 
 ## Launchpad
 
-Every installed application, in a grid, full screen. `SUPER+ALT+A`.
-
-A dock tile is next — on a Mac that is how most people open it, and F4 is not
-available to us (below). Until then the keybinding is the only way in.
+Every installed application, in a grid, full screen. `SUPER+ALT+A`, or the
+Launchpad tile at the front of the dock — where a Mac keeps it, second only to
+Finder, which we do not have. The tile appears only while `launchpad` is on, so
+the dock never offers a button for a plugin that is disabled.
 
 Type to filter. Arrow keys walk the grid and carry on across pages, so the
 selection never gets stuck at an edge. Enter launches, click launches, Escape

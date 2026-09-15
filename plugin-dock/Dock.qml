@@ -32,6 +32,13 @@ Item {
   property bool trashShown: false
   property bool trashAvailable: false
   readonly property bool hasTrash: trashShown && trashAvailable
+
+  // Launchpad sits first, where a Mac keeps it — second only to Finder, which
+  // we do not have. Drawn from a glyph rather than an icon theme because it is
+  // ours, not an installed application with a .desktop entry to look up.
+  property bool launchpadOn: false
+  readonly property string launchpadGlyph: ""
+
   property int iconSize: Style.space(46)
   property int peek: 3
 
@@ -124,6 +131,7 @@ Item {
 
   readonly property var items: {
     var out = [], seen = ({}), i
+    if (launchpadOn) out.push({ kind: "launchpad", id: "__launchpad__" })
     for (i = 0; i < pinned.length; i++) {
       var id = String(pinned[i])
       if (!id || seen[id]) continue
@@ -260,9 +268,17 @@ Item {
     actionProc.running = true
   }
 
+  // Straight to the overlay rather than through the CLI: there is no state to
+  // change, and `omarchy-macifier` would only shell out to this same call.
+  function toggleLaunchpad() {
+    launchpadToggleProc.command = ["omarchy-shell", "local.macifier-launchpad", "toggle"]
+    launchpadToggleProc.running = true
+  }
+
   Process { id: focusProc; command: ["true"] }
   Process { id: launchProc; command: ["true"] }
   Process { id: actionProc; command: ["true"] }
+  Process { id: launchpadToggleProc; command: ["true"] }
   Process {
     id: closeProc
     command: ["true"]
@@ -374,6 +390,20 @@ Item {
     }
   }
 
+  // The Launchpad tile is drawn only while the `launchpad` option is on, so the
+  // dock never offers a button for a plugin that is disabled. Same `status`
+  // verb guard as the two polls above.
+  Process {
+    id: launchpadProc
+    command: ["omarchy-macifier", "dock", "launchpad", "status"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try { root.launchpadOn = !!JSON.parse(text).on }
+        catch (e) { root.launchpadOn = false }
+      }
+    }
+  }
+
   Timer {
     interval: 2000; running: true; repeat: true; triggeredOnStart: true
     onTriggered: {
@@ -381,6 +411,7 @@ Item {
       if (!clientsProc.running) clientsProc.running = true
       if (!placeholdersProc.running) placeholdersProc.running = true
       if (!trashProc.running) trashProc.running = true
+      if (!launchpadProc.running) launchpadProc.running = true
     }
   }
 
@@ -636,7 +667,8 @@ Item {
               readonly property bool isSep: modelData.kind === "sep"
               readonly property bool isPlanned: modelData.kind === "planned"
               readonly property bool isTrash: modelData.kind === "trash"
-              readonly property bool isRunning: !isSep && !isPlanned && !isTrash
+              readonly property bool isLaunchpad: modelData.kind === "launchpad"
+              readonly property bool isRunning: !isSep && !isPlanned && !isTrash && !isLaunchpad
                                                 && !!root.runningIds[modelData.id]
 
               width: isSep ? Style.space(9) : root.iconSize + Style.space(8)
@@ -655,7 +687,7 @@ Item {
 
               Image {
                 id: img
-                visible: !tile.isSep && !tile.isPlanned
+                visible: !tile.isSep && !tile.isPlanned && !tile.isLaunchpad
                 anchors.centerIn: parent
                 width: root.iconSize; height: root.iconSize
                 sourceSize.width: 96; sourceSize.height: 96
@@ -666,7 +698,8 @@ Item {
                 source: tile.isTrash
                           ? Quickshell.iconPath(root.trashCount > 0 ? "user-trash-full"
                                                                    : "user-trash", true)
-                          : ((tile.isSep || tile.isPlanned) ? "" : root.iconFor(modelData.id))
+                          : ((tile.isSep || tile.isPlanned || tile.isLaunchpad)
+                               ? "" : root.iconFor(modelData.id))
                 smooth: true
 
                 // Grow upward out of the dock, as on the Mac: the icon's foot
@@ -709,6 +742,42 @@ Item {
               // reserved square, with a bar struck through it. Grey alone reads
               // as "disabled, try again later"; the bar reads as "not a thing
               // yet", which is the truth.
+              // Launchpad. The same rounded square as a barred tile, but at
+              // full strength and with no bar — it is the one glyph tile here
+              // that actually does something, and it has to read that way
+              // sitting next to three that do not.
+              Item {
+                id: launchpadTile
+                visible: tile.isLaunchpad
+                anchors.centerIn: parent
+                width: root.iconSize; height: root.iconSize
+
+                // Grows with the wave like every other icon, from the foot, so
+                // it does not sit still while its neighbours magnify.
+                transformOrigin: Item.Bottom
+                scale: tile.magScale
+                Behavior on scale { NumberAnimation { duration: 55; easing.type: Easing.OutCubic } }
+
+                Rectangle {
+                  anchors.centerIn: parent
+                  width: root.iconSize * 0.86
+                  height: width
+                  radius: Style.space(10)
+                  color: root.foreground
+                  opacity: tileMouse.containsMouse ? 0.18 : 0.12
+                  Behavior on opacity { NumberAnimation { duration: 120 } }
+                }
+
+                Text {
+                  anchors.centerIn: parent
+                  textFormat: Text.PlainText
+                  text: tile.isLaunchpad ? root.launchpadGlyph : ""
+                  color: root.foreground
+                  font.family: Style.font.family
+                  font.pixelSize: Math.round(root.iconSize * 0.46)
+                }
+              }
+
               Item {
                 id: planned
                 visible: tile.isPlanned
@@ -779,9 +848,15 @@ Item {
                 onClicked: function (mouse) {
                   var x = tile.mapToItem(null, tile.width / 2, 0).x
                   if (mouse.button === Qt.RightButton) {
+                    // Launchpad has no windows to list and cannot be unpinned,
+                    // so the app menu would be three disabled rows. Left-click
+                    // is the whole interaction.
+                    if (tile.isLaunchpad) return
                     root.openMenu(tile.isTrash ? root.menuForTrash()
                                   : (tile.isPlanned ? root.menuForPlanned(modelData)
                                                     : root.menuForApp(modelData.id)), x)
+                  } else if (tile.isLaunchpad) {
+                    root.toggleLaunchpad()
                   } else if (tile.isTrash) {
                     root.run(["dock", "trash", "open"])
                   } else if (tile.isPlanned) {
@@ -800,9 +875,10 @@ Item {
                 anchors.bottom: parent.top
                 anchors.bottomMargin: Style.space(4)
                 textFormat: Text.PlainText
-                text: tile.isTrash ? root.trashLabel()
+                text: tile.isLaunchpad ? "Launchpad"
+                      : (tile.isTrash ? root.trashLabel()
                       : (tile.isPlanned ? modelData.name + " · not built yet"
-                                        : (tile.isSep ? "" : root.nameFor(modelData.id)))
+                                        : (tile.isSep ? "" : root.nameFor(modelData.id))))
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption

@@ -602,6 +602,15 @@ case "${1:-status}" in
                        on|off|toggle) dock_trash_set "$2" ;;
                        *) echo "usage: omarchy-macifier dock trash [status|count|open|empty|on|off|toggle]" >&2; exit 1 ;;
                      esac ;;
+             launchpad)
+                     # The dock asks whether to draw the Launchpad tile. The
+                     # explicit `status` verb is the same guard the trash and
+                     # placeholder polls use: a CLI older than this reads a
+                     # bare `dock launchpad` as "pin an app called launchpad".
+                     case "${2:-status}" in
+                       status) printf '{"on":%s}\n' "$(is_on launchpad && echo true || echo false)" ;;
+                       *) echo "usage: omarchy-macifier dock launchpad [status]" >&2; exit 1 ;;
+                     esac ;;
              "")     dock_pinned ;;
              *)      dock_set "$1" "${2:-toggle}" ;;
            esac ;;
