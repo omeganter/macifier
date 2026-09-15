@@ -177,3 +177,9 @@ visible.
 
 [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) lists the Omarchy newcomer
 problems this came out of.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). The same licence Omarchy itself uses, and what
+nearly every plugin in the marketplace uses, so code can move between them
+without a licence conversation first.
