@@ -31,23 +31,37 @@
 -- Plain Control has no bindings at all on stock Omarchy — `hyprctl binds`
 -- reports no entry with modmask 4 — so both real chords are free.
 --
--- The cost, stated plainly: a Hyprland bind is global, so CTRL+UP and
--- CTRL+DOWN stop reaching terminal applications that want them (tmux pane
--- resize, some editors and pagers). macOS has exactly this problem and answers
--- it the same way. If it bites, move these two lines rather than the plugins.
+-- The cost, stated precisely, because the general version of this warning is
+-- too vague to act on. A Hyprland bind is consumed by the compositor: the key
+-- never reaches the focused window at all. So every application that wants
+-- CTRL+UP or CTRL+DOWN stops receiving it — there is no fallback and no
+-- pass-through. Measured on this machine, what that actually costs in tmux:
+--
+--   prefix then C-Up/C-Down   resize-pane          broken (tmux never sees it)
+--   copy-mode C-Up/C-Down     scroll up/down       broken
+--   C-M-S-arrows              resize-pane          unaffected
+--
+-- The last line is the one that matters: Omarchy's own tmux.conf binds resize
+-- to Ctrl+Alt+Shift+arrows, not to plain Ctrl+arrows, so the binding a user
+-- here is actually taught survives. What breaks is tmux's built-in default in
+-- the prefix table, and scrolling in copy-mode. GTK text views also use
+-- Ctrl+Up/Down to move by paragraph and will lose it.
+--
+-- macOS has exactly this problem, answers it the same way, and Mac users live
+-- with it. If it bites, move these two lines rather than the plugins.
 
--- Both Mission Control candidates, bound side by side so they can be compared
--- on the same desktop with the same windows open. The faithful one gets the
--- real chord; the alternative goes one modifier along — the same thing
--- appswitcher.lua does to workspace cycling instead of removing it.
-o.bind("CTRL + UP", "Mission Control (AndyWeiBoan)",
+-- Mission Control. Chosen over zzwong.stage after both were bound side by side
+-- and tried: Stage renders workspaces as the theme-picker's skewed carousel,
+-- which is Mission Control's job done in Omarchy's shape language rather than
+-- the Mac's. This one reproduces the layout — Spaces strip above, the current
+-- desktop's windows shrunk out beneath — and opens in two phases so the
+-- desktop appears to shrink rather than a new screen fading in over it.
+o.bind("CTRL + UP", "Mission Control",
   "omarchy-shell shell toggle io.github.andyweiboan.missioncontrol '{}'")
-o.bind("CTRL + SHIFT + UP", "Mission Control (zzwong Stage)",
-  "omarchy-shell shell toggle zzwong.stage")
 
--- A dedicated exit for the faithful one. Its README recommends this: CTRL+UP
--- toggles, so without a separate close a second press to "get out" is
--- indistinguishable from an accidental re-open.
+-- A dedicated exit. Its README recommends this: CTRL+UP toggles, so without a
+-- separate close a second press to "get out" is indistinguishable from an
+-- accidental re-open.
 o.bind("CTRL + ALT + DOWN", "Close Mission Control",
   "omarchy-shell shell hide io.github.andyweiboan.missioncontrol")
 
