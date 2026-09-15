@@ -451,7 +451,32 @@ switcher loses exist.
 
 ---
 
-## 8. Sources
+## 8. Adopted
+
+Decided 2026-09-15, after installing the shortlist and trying it rather than
+reading about it. All MIT, all installed by plugin id — nothing forked, nothing
+vendored — so each author's releases reach our users directly.
+
+| Gap | Adopted | Why this one |
+|---|---|---|
+| Exposé, Quick Look for windows, hot corner | [kristofferR/omarchy-expose](https://github.com/kristofferR/omarchy-expose) | Closes three gaps at once, and removal leaves nothing outside its plugin directory — which is our claim too |
+| Mission Control | [AndyWeiBoan/omarchy-mission-control](https://github.com/AndyWeiBoan/omarchy-mission-control) | Reproduces the macOS layout and shrink-in open. Chosen over `zzwong/omarchy-stage`, which does the same job in Omarchy's carousel shape language — good, but not the thing a switcher recognises |
+| Spotlight | [maajix/omarchy-spotlight](https://github.com/maajix/omarchy-spotlight) | Runs inside the existing shell process, so no cold start |
+| Quick Look for files | [andreconde21/omarchy-quick-look](https://github.com/andreconde21/omarchy-quick-look) | Puts the feature where the Mac puts it: Space on a Nautilus selection, via the supported `org.gnome.NautilusPreviewer` D-Bus hook |
+| macOS shell chrome | [Mudales/omarchy-cupertino](https://github.com/Mudales/omarchy-cupertino) | `full` only, never `minimal`. Writes nothing to disk — all runtime `hyprctl` and in-memory overrides — so it reverts cleanly |
+
+The one piece of code Macifier actually contains is wdg's magnification wave;
+its terms are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+
+Bindings for the above live in `hypr/trial/macifier-trial.lua`, not in
+`~/.config/hypr` — Macifier never writes to user-owned config.
+
+Still nothing to adopt: **Launchpad** (zero published; `xechoz.launchpad` is
+days old) and **Stage Manager**. Both remain builds.
+
+---
+
+## 9. Sources
 
 Prior art surveyed 2026-09-14. All MIT.
 
@@ -462,7 +487,7 @@ Prior art surveyed 2026-09-14. All MIT.
 - [debba/omarchy-stage-manager](https://github.com/debba/omarchy-stage-manager) — Stage Manager
 - [OmarGonD/omacorners](https://github.com/OmarGonD/omacorners) — hot corners
 - [maajix/omarchy-spotlight](https://github.com/maajix/omarchy-spotlight) — Raycast-style launcher
-- [ccdwyer/omarchy-quicklook](https://github.com/ccdwyer/omarchy-quicklook) — Quick Look
+- [andreconde21/omarchy-quick-look](https://github.com/andreconde21/omarchy-quick-look) · [ccdwyer/omarchy-quicklook](https://github.com/ccdwyer/omarchy-quicklook) — Quick Look
 - [ifubaraboye/omarchy-dock](https://github.com/ifubaraboye/omarchy-dock) · [wisangdg/omarchy-magnify-dock](https://github.com/wisangdg/omarchy-magnify-dock) — docks with magnification
 - [Mudales/omarchy-cupertino](https://github.com/Mudales/omarchy-cupertino) · [macarchy/apple-glass-light](https://github.com/macarchy/apple-glass-light) — macOS-flavoured shell chrome
 - [maikunari/omarchy-magic-mouse](https://github.com/maikunari/omarchy-magic-mouse) · [lxp-git/omarchy-trackpad](https://github.com/lxp-git/omarchy-trackpad) — Apple pointing devices
