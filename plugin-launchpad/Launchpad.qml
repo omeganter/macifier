@@ -35,6 +35,7 @@ Item {
   readonly property int perPage: Math.max(1, columns * rows)
 
   readonly property color foreground: Color.foreground
+  readonly property color background: Color.popups ? Color.popups.background : Color.background
 
   // Reading allApps and query inside the function is what makes this re-run
   // when either changes; QML tracks property reads during evaluation.
@@ -163,15 +164,24 @@ Item {
     // fits two lines of a long application name without clipping.
     readonly property int cell: Style.space(132)
 
-    onWidthChanged: root.columns = Math.max(4, Math.min(9, Math.floor((width - Style.space(160)) / cell)))
-    onHeightChanged: root.rows = Math.max(3, Math.min(6, Math.floor((height - Style.space(260)) / cell)))
+    // Leaves room for the card's padding and its margin from the screen edge,
+    // so the grid never pushes the surface wider than the display.
+    onWidthChanged: root.columns = Math.max(4, Math.min(9, Math.floor((width - Style.space(240)) / cell)))
+    onHeightChanged: root.rows = Math.max(3, Math.min(6, Math.floor((height - Style.space(340)) / cell)))
 
     // The scrim. macOS blurs the desktop behind Launchpad; Hyprland can blur a
     // layer surface, but only if the user has blur on, so this has to read
     // correctly as a plain dim as well.
+    //
+    // 0.72 rather than a gentler dim because of what the card is worth against
+    // it. On a dark theme the popup background is near-black and so is a dimmed
+    // dark wallpaper: measured here, 0.55 put rgb(26,27,38) against
+    // rgb(12,12,17), a contrast ratio of 1.14:1, so the window read as a
+    // hairline outline rather than a surface. Contrast compresses badly at the
+    // dark end, so the scrim has to do the work the colours cannot.
     Rectangle {
       anchors.fill: parent
-      color: Qt.rgba(0, 0, 0, 0.55)
+      color: Qt.rgba(0, 0, 0, 0.72)
     }
 
     MouseArea {
@@ -214,153 +224,198 @@ Item {
         }
       }
 
-      Column {
+      // The surface the grid sits on. Without it the icons float directly on
+      // the scrim, and on a dark theme a dark icon over a dimmed dark desktop
+      // has nothing to sit against — you see the wallpaper through the gaps
+      // rather than a thing you are choosing from. Same popup background and
+      // hairline the switcher and the dock already use, so all three Macifier
+      // surfaces are recognisably one family in any theme.
+      BorderSurface {
+        id: card
         anchors.centerIn: parent
-        spacing: Style.space(28)
+        width: Math.min(content.implicitWidth + Style.space(64), parent.width - Style.space(80))
+        height: Math.min(content.implicitHeight + Style.space(64), parent.height - Style.space(80))
+        radius: Style.cornerRadius > 0 ? Style.space(22) : 0
+        color: root.background
+        borderSpec: Border.surfaceSpec("popups", "border",
+          Color.popups ? Color.popups.border : root.foreground, 2)
 
-        // The search field. Not focusable on its own — every keystroke is
-        // already being read by the key catcher, so this only ever reports.
-        // A second focus target would mean two places a key could land.
-        Rectangle {
-          anchors.horizontalCenter: parent.horizontalCenter
-          width: Style.space(320)
-          height: Style.space(40)
-          radius: height / 2
-          color: Qt.rgba(1, 1, 1, 0.14)
+        // Clicks inside the card are not clicks outside it. Without this they
+        // fall through to the scrim's MouseArea and close Launchpad, so any
+        // miss between two icons would dismiss it.
+        MouseArea { anchors.fill: parent }
 
+        Column {
+          id: content
+          anchors.centerIn: parent
+          spacing: Style.space(28)
+
+          // The search field. Not focusable on its own — every keystroke is
+          // already being read by the key catcher, so this only ever reports.
+          // A second focus target would mean two places a key could land.
+          Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            width: Style.space(320)
+            height: Style.space(40)
+            radius: height / 2
+            color: Qt.rgba(1, 1, 1, 0.14)
+
+            Row {
+              anchors.centerIn: parent
+              spacing: Style.space(8)
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: ""
+                color: root.foreground
+                font.family: Style.font.family
+                font.pixelSize: Style.font.body
+                opacity: 0.7
+              }
+
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                textFormat: Text.PlainText
+                text: root.query.length > 0 ? root.query : "Search"
+                color: root.foreground
+                opacity: root.query.length > 0 ? 1.0 : 0.55
+                font.family: Style.font.family
+                font.pixelSize: Style.font.body
+              }
+            }
+          }
+
+          // The grid itself. One page at a time: slicing the filtered list is
+          // cheaper and far simpler than a flickable holding every application,
+          // and paging is the interaction the Mac actually offers.
+          Grid {
+            id: grid
+            anchors.horizontalCenter: parent.horizontalCenter
+            columns: root.columns
+            spacing: Style.space(10)
+
+            Repeater {
+              model: root.shown.slice(root.page * root.perPage, (root.page + 1) * root.perPage)
+
+              delegate: Item {
+                id: tile
+                required property var modelData
+                required property int index
+
+                readonly property int absolute: root.page * root.perPage + index
+                readonly property bool selected: absolute === root.index
+
+                width: panel.cell
+                height: panel.cell
+
+                Rectangle {
+                  anchors.fill: parent
+                  anchors.margins: Style.space(6)
+                  radius: Style.space(16)
+                  color: tile.selected ? Qt.rgba(1, 1, 1, 0.18)
+                                       : (hover.hovered ? Qt.rgba(1, 1, 1, 0.09) : "transparent")
+                }
+
+                HoverHandler { id: hover }
+
+                Column {
+                  anchors.centerIn: parent
+                  spacing: Style.space(8)
+
+                  // A plate under every icon. macOS needs none because every
+                  // Mac icon ships its own filled artwork; a Linux icon theme
+                  // is a mix, and the flat monochrome outlines in it — the
+                  // Avahi browsers, HDAJackRetask — disappear into a dark card
+                  // completely. The plate is what they sit on. It is faint
+                  // enough that a full-bleed icon like Chromium or Discord
+                  // still reads as itself rather than as a tile.
+                  Item {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Style.space(72)
+                    height: Style.space(72)
+
+                    Rectangle {
+                      anchors.centerIn: parent
+                      width: Style.space(68)
+                      height: width
+                      radius: Style.space(18)
+                      color: root.foreground
+                      opacity: 0.07
+                    }
+
+                    Image {
+                      anchors.centerIn: parent
+                      width: Style.space(64)
+                      height: Style.space(64)
+                      fillMode: Image.PreserveAspectFit
+                      sourceSize.width: 128
+                      sourceSize.height: 128
+                      source: root.iconFor(tile.modelData)
+                      smooth: true
+                    }
+                  }
+
+                  Text {
+                    width: panel.cell - Style.space(16)
+                    horizontalAlignment: Text.AlignHCenter
+                    textFormat: Text.PlainText
+                    text: tile.modelData.name
+                    color: root.foreground
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.bodySmall
+                    elide: Text.ElideRight
+                    maximumLineCount: 2
+                    wrapMode: Text.WordWrap
+                  }
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  onClicked: root.launchAt(tile.absolute)
+                  onEntered: root.index = tile.absolute
+                  hoverEnabled: true
+                }
+              }
+            }
+          }
+
+          // Page dots. Hidden on a single page, because one dot tells you
+          // nothing and still costs a row of space.
           Row {
-            anchors.centerIn: parent
+            anchors.horizontalCenter: parent.horizontalCenter
             spacing: Style.space(8)
+            visible: root.pageCount > 1
 
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: ""
-              color: root.foreground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.body
-              opacity: 0.7
-            }
+            Repeater {
+              model: root.pageCount
+              delegate: Rectangle {
+                required property int index
+                width: Style.space(8)
+                height: Style.space(8)
+                radius: width / 2
+                color: root.foreground
+                opacity: index === root.page ? 0.9 : 0.35
 
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              textFormat: Text.PlainText
-              text: root.query.length > 0 ? root.query : "Search"
-              color: root.foreground
-              opacity: root.query.length > 0 ? 1.0 : 0.55
-              font.family: Style.font.family
-              font.pixelSize: Style.font.body
-            }
-          }
-        }
-
-        // The grid itself. One page at a time: slicing the filtered list is
-        // cheaper and far simpler than a flickable holding every application,
-        // and paging is the interaction the Mac actually offers.
-        Grid {
-          id: grid
-          anchors.horizontalCenter: parent.horizontalCenter
-          columns: root.columns
-          spacing: Style.space(10)
-
-          Repeater {
-            model: root.shown.slice(root.page * root.perPage, (root.page + 1) * root.perPage)
-
-            delegate: Item {
-              id: tile
-              required property var modelData
-              required property int index
-
-              readonly property int absolute: root.page * root.perPage + index
-              readonly property bool selected: absolute === root.index
-
-              width: panel.cell
-              height: panel.cell
-
-              Rectangle {
-                anchors.fill: parent
-                anchors.margins: Style.space(6)
-                radius: Style.space(16)
-                color: tile.selected ? Qt.rgba(1, 1, 1, 0.18)
-                                     : (hover.hovered ? Qt.rgba(1, 1, 1, 0.09) : "transparent")
-              }
-
-              HoverHandler { id: hover }
-
-              Column {
-                anchors.centerIn: parent
-                spacing: Style.space(8)
-
-                Image {
-                  anchors.horizontalCenter: parent.horizontalCenter
-                  width: Style.space(64)
-                  height: Style.space(64)
-                  fillMode: Image.PreserveAspectFit
-                  sourceSize.width: 128
-                  sourceSize.height: 128
-                  source: root.iconFor(tile.modelData)
-                  smooth: true
-                }
-
-                Text {
-                  width: panel.cell - Style.space(16)
-                  horizontalAlignment: Text.AlignHCenter
-                  textFormat: Text.PlainText
-                  text: tile.modelData.name
-                  color: root.foreground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.bodySmall
-                  elide: Text.ElideRight
-                  maximumLineCount: 2
-                  wrapMode: Text.WordWrap
+                MouseArea {
+                  anchors.fill: parent
+                  onClicked: root.setPage(index)
                 }
               }
-
-              MouseArea {
-                anchors.fill: parent
-                onClicked: root.launchAt(tile.absolute)
-                onEntered: root.index = tile.absolute
-                hoverEnabled: true
-              }
             }
           }
-        }
 
-        // Page dots. Hidden on a single page, because one dot tells you
-        // nothing and still costs a row of space.
-        Row {
-          anchors.horizontalCenter: parent.horizontalCenter
-          spacing: Style.space(8)
-          visible: root.pageCount > 1
-
-          Repeater {
-            model: root.pageCount
-            delegate: Rectangle {
-              required property int index
-              width: Style.space(8)
-              height: Style.space(8)
-              radius: width / 2
-              color: root.foreground
-              opacity: index === root.page ? 0.9 : 0.35
-
-              MouseArea {
-                anchors.fill: parent
-                onClicked: root.setPage(index)
-              }
-            }
+          // Only ever seen while filtering, so it names the query rather than
+          // saying "no results" into the void.
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.shown.length === 0
+            textFormat: Text.PlainText
+            text: "Nothing matches “" + root.query + "”"
+            color: root.foreground
+            opacity: 0.7
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
           }
-        }
-
-        // Only ever seen while filtering, so it names the query rather than
-        // saying "no results" into the void.
-        Text {
-          anchors.horizontalCenter: parent.horizontalCenter
-          visible: root.shown.length === 0
-          textFormat: Text.PlainText
-          text: "Nothing matches “" + root.query + "”"
-          color: root.foreground
-          opacity: 0.7
-          font.family: Style.font.family
-          font.pixelSize: Style.font.body
         }
       }
     }
