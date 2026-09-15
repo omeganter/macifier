@@ -2,6 +2,10 @@
 
 Makes Omarchy feel like a Mac. One switch, fully reversible.
 
+**Beta** — `0.1.x`, no tagged release. Reversibility is the part that is
+tested; the set of options is still moving and names can change between
+commits. Pin a commit if you build on one.
+
 Unofficial. Not affiliated with Omarchy. Opinions and pull requests welcome,
 including "that default is wrong".
 
