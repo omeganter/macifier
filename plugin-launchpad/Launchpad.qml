@@ -28,6 +28,12 @@ Item {
   property int index: 0
   property int page: 0
 
+  // The selection square means "Enter launches this", so it only appears
+  // once the keyboard is actually in play. Showing it from the moment
+  // Launchpad opens marks an app nobody chose, and a Mac shows nothing
+  // until you arrow or type either.
+  property bool keyboardNav: false
+
   // Filled from the window, so the grid adapts to the display instead of
   // assuming the 7x5 a 16:10 Mac happens to use.
   property int columns: 7
@@ -88,6 +94,7 @@ Item {
     query = ""
     index = 0
     page = 0
+    keyboardNav = false
     opened = true
   }
 
@@ -111,6 +118,7 @@ Item {
   function move(delta) {
     var n = shown.length
     if (n === 0) return
+    keyboardNav = true
     var next = index + delta
     if (next < 0) next = 0
     if (next > n - 1) next = n - 1
@@ -167,6 +175,7 @@ Item {
   }
 
   function typed(ch) {
+    keyboardNav = true
     query += ch
     index = 0
     page = 0
@@ -367,7 +376,7 @@ Item {
                 required property int index
 
                 readonly property int absolute: root.page * root.perPage + index
-                readonly property bool selected: absolute === root.index
+                readonly property bool selected: root.keyboardNav && absolute === root.index
 
                 width: panel.cell
                 height: panel.cell
@@ -433,10 +442,15 @@ Item {
                   }
                 }
 
+                // Hovering deliberately does NOT move the selection. It used
+                // to, and the selection then stuck to whatever tile the pointer
+                // last crossed on its way to the search field or the page dots
+                // — a highlight sitting on an app the pointer had long left.
+                // A Mac does not do this either: the highlight is the keyboard's
+                // and the pointer has its own, fainter one.
                 MouseArea {
                   anchors.fill: parent
                   onClicked: root.launchAt(tile.absolute)
-                  onEntered: root.index = tile.absolute
                   hoverEnabled: true
                 }
               }
