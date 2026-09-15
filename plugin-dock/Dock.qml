@@ -4,6 +4,7 @@ import Quickshell.Wayland
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "Magnification.js" as Magnification
 
 // Macifier dock — the bottom strip of favourite apps.
 //
@@ -34,6 +35,53 @@ Item {
   property int iconSize: Style.space(46)
   property int peek: 3
 
+  // Magnification. The pointer's x inside the icon row, or -1 when it is not
+  // over the dock at all — which is the resting state, every icon at 1.0.
+  //
+  // The wave itself is wdg's, vendored in Magnification.js; see
+  // THIRD_PARTY_NOTICES.md. What stays here is our geometry, because our row
+  // is not his: ours has separators, barred placeholders and a trash tile, and
+  // slots come in two widths.
+  property real pointerX: -1
+  property real magnification: 1.6
+  readonly property real magRadius: iconSize * 3.0
+
+  // Slot widths, duplicated from the delegate because the wave has to know the
+  // baseline before a single tile is laid out. Keep the two in step.
+  function slotWidth(item) {
+    return item && item.kind === "sep" ? Style.space(9) : iconSize + Style.space(8)
+  }
+
+  // Centres of every slot in row coordinates, then one scale per slot from the
+  // pointer's distance to it, then the offsets that keep the row centred.
+  // `extra` is how much wider the magnified row is than the resting one; the
+  // card grows by it so the wave never spills past the edge.
+  readonly property var magState: {
+    var n = items.length
+    var scales = [], centres = [], x = 0, gap = Style.space(8)
+
+    for (var i = 0; i < n; i++) {
+      var w = slotWidth(items[i])
+      centres.push(x + w / 2)
+      x += w + gap
+    }
+
+    if (pointerX < 0 || n === 0)
+      return { scales: [], offsets: [], extra: 0 }
+
+    for (var j = 0; j < n; j++) {
+      // Separators do not grow; on the Mac the divider stays put while the
+      // icons swell around it.
+      scales.push(items[j].kind === "sep"
+                  ? 1.0
+                  : Magnification.scaleFromDistance(Math.abs(pointerX - centres[j]),
+                                                    magnification, magRadius))
+    }
+
+    var offsets = Magnification.computeMagnifiedOffsets(scales, iconSize, 0.82)
+    return { scales: scales, offsets: offsets, extra: offsets.totalExtra }
+  }
+
   readonly property color background: Color.popups ? Color.popups.background : Color.background
   readonly property color foreground: Color.foreground
 
@@ -43,6 +91,23 @@ Item {
     var m = ({})
     for (var i = 0; i < clients.length; i++) m[clients[i].entryId] = true
     return m
+  }
+
+  // The overlay contract. Omarchy summons and dismisses an overlay through
+  // these two, the way the first-party clipboard and emoji pickers do, and the
+  // app switcher next door already did.
+  //
+  // The dock never needed them to work, because it reveals itself on pointer
+  // hover and hides on a timer. But without them nothing *else* can show it —
+  // no keybinding, no `omarchy-shell` call, no other plugin — and the dock was
+  // the one Macifier surface you could not ask for by name.
+  function open(): void { hideTimer.stop(); revealed = true }
+
+  function close(): void {
+    hideTimer.stop()
+    revealed = false
+    pointerX = -1
+    closeMenu()
   }
 
   function windowsFor(id) {
@@ -480,7 +545,11 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     anchors { bottom: true; left: true; right: true }
-    implicitHeight: root.iconSize + Style.space(34)
+
+    // Room for a fully magnified icon. A layer-shell surface is a hard edge —
+    // anything taller than this is not clipped prettily, it is simply not
+    // drawn — so the tallest the wave can ever get has to fit.
+    implicitHeight: Math.round(root.iconSize * root.magnification) + Style.space(34)
 
     margins.bottom: root.revealed ? 0 : -(implicitHeight - root.peek)
     Behavior on margins.bottom {
@@ -506,7 +575,12 @@ Item {
         interval: 450
         // An open menu is a conversation with the dock. Sliding away mid-click
         // would take the menu with it.
-        onTriggered: if (!root.menuOpen) root.revealed = false
+        //
+        // The wave settles here rather than when the pointer leaves the outer
+        // area, because crossing from that area onto a tile also counts as
+        // leaving it — resetting there would blink every icon back to rest on
+        // the way in.
+        onTriggered: if (!root.menuOpen) { root.revealed = false; root.pointerX = -1 }
       }
 
       BorderSurface {
@@ -514,7 +588,9 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Style.space(8)
-        width: iconRow.implicitWidth + Style.space(20)
+        // Grows with the wave. The offsets are centred on the row, so the card
+        // widening symmetrically around its own centre keeps them aligned.
+        width: iconRow.implicitWidth + Style.space(20) + root.magState.extra
         height: root.iconSize + Style.space(18)
         radius: Style.cornerRadius > 0 ? Style.space(16) : 0
         color: root.background
@@ -524,10 +600,19 @@ Item {
         // Declared before the row so tiles keep their own clicks; this catches
         // only the card's empty margins.
         MouseArea {
+          id: cardMouse
           anchors.fill: parent
           acceptedButtons: Qt.RightButton
           onClicked: root.openMenu(root.menuForDock(),
                                    card.mapToItem(null, card.width / 2, 0).x)
+
+          // Only reached where no tile sits above: the card's own margins, and
+          // the separators, whose MouseArea is disabled. Without this the wave
+          // would freeze in place there instead of following the pointer out.
+          hoverEnabled: true
+          onEntered: hideTimer.stop()
+          onPositionChanged: root.pointerX =
+            card.mapToItem(iconRow, cardMouse.mouseX, 0).x
         }
 
         Row {
@@ -540,6 +625,13 @@ Item {
             delegate: Item {
               id: tile
               required property var modelData
+              required property int index
+
+              // Transform-only, so the Row's layout never enters the pointer's
+              // hot path: the slot keeps its width and the icon moves inside it.
+              readonly property real magScale: root.magState.scales[index] || 1.0
+              readonly property real magOffset: root.magState.offsets[index] || 0
+              transform: Translate { x: tile.magOffset }
 
               readonly property bool isSep: modelData.kind === "sep"
               readonly property bool isPlanned: modelData.kind === "planned"
@@ -576,8 +668,16 @@ Item {
                                                                    : "user-trash", true)
                           : ((tile.isSep || tile.isPlanned) ? "" : root.iconFor(modelData.id))
                 smooth: true
-                scale: (tileMouse.containsMouse || trashDrop.containsDrag) ? 1.18 : 1.0
-                Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
+                // Grow upward out of the dock, as on the Mac: the icon's foot
+                // stays on the floor next to its running dot, which would drift
+                // if we scaled about the centre.
+                transformOrigin: Item.Bottom
+                scale: tile.magScale * (trashDrop.containsDrag ? 1.18 : 1.0)
+
+                // Short, because this now tracks the pointer rather than
+                // answering a hover. At 120ms the wave lags behind the cursor.
+                Behavior on scale { NumberAnimation { duration: 55; easing.type: Easing.OutCubic } }
               }
 
               // Dropping files here deletes them, as on the Mac dock. Enabled
@@ -667,7 +767,15 @@ Item {
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 cursorShape: tile.isPlanned ? Qt.ArrowCursor : Qt.PointingHandCursor
-                onEntered: hideTimer.stop()
+
+                // Mapped rather than added, so the tile's own magnification
+                // offset cannot feed back into the pointer position that
+                // produced it. The cursor does not move when the icons do.
+                function track() {
+                  root.pointerX = tile.mapToItem(iconRow, tileMouse.mouseX, 0).x
+                }
+                onEntered: { hideTimer.stop(); track() }
+                onPositionChanged: track()
                 onClicked: function (mouse) {
                   var x = tile.mapToItem(null, tile.width / 2, 0).x
                   if (mouse.button === Qt.RightButton) {
