@@ -17,13 +17,6 @@
       "note": "Every window, spread out at once"
     },
     {
-      "id": "settings",
-      "name": "System Settings",
-      "glyph": "",
-      "phase": "P0",
-      "note": "Every Mac setting, tagged by who provides it"
-    },
-    {
       "id": "stagemanager",
       "name": "Stage Manager",
       "glyph": "",

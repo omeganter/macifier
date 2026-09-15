@@ -36,6 +36,12 @@ Item {
   // Launchpad sits first, where a Mac keeps it — second only to Finder, which
   // we do not have. Drawn from a glyph rather than an icon theme because it is
   // ours, not an installed application with a .desktop entry to look up.
+  // System Settings sits at the end of the apps, where a Mac keeps it — after
+  // everything running, before the rule that fences off the stacks and Trash.
+  // It wears the same cog it wore as a barred placeholder, so the tile the user
+  // has been looking at all along is the one that now opens.
+  readonly property string settingsGlyph: ""
+
   property bool launchpadOn: false
   readonly property string launchpadGlyph: ""
 
@@ -144,6 +150,10 @@ Item {
       seen[eid] = true
       out.push({ kind: "app", id: eid, pinned: false })
     }
+    // Always present, unlike Launchpad, which is an option the user can turn
+    // off. The window is the dock's own settings as much as the system's, so a
+    // dock with no way into it would be a dead end.
+    out.push({ kind: "settings", id: "__settings__" })
     if (placeholders.length > 0) {
       out.push({ kind: "sep", id: "__sep__" })
       for (i = 0; i < placeholders.length; i++) {
@@ -668,7 +678,11 @@ Item {
               readonly property bool isPlanned: modelData.kind === "planned"
               readonly property bool isTrash: modelData.kind === "trash"
               readonly property bool isLaunchpad: modelData.kind === "launchpad"
-              readonly property bool isRunning: !isSep && !isPlanned && !isTrash && !isLaunchpad
+              readonly property bool isSettings: modelData.kind === "settings"
+              // The two tiles that are ours rather than an installed app: drawn
+              // from a glyph, no .desktop entry to look up, no windows to list.
+              readonly property bool isGlyph: isLaunchpad || isSettings
+              readonly property bool isRunning: !isSep && !isPlanned && !isTrash && !isGlyph
                                                 && !!root.runningIds[modelData.id]
 
               width: isSep ? Style.space(9) : root.iconSize + Style.space(8)
@@ -687,7 +701,7 @@ Item {
 
               Image {
                 id: img
-                visible: !tile.isSep && !tile.isPlanned && !tile.isLaunchpad
+                visible: !tile.isSep && !tile.isPlanned && !tile.isGlyph
                 anchors.centerIn: parent
                 width: root.iconSize; height: root.iconSize
                 sourceSize.width: 96; sourceSize.height: 96
@@ -698,7 +712,7 @@ Item {
                 source: tile.isTrash
                           ? Quickshell.iconPath(root.trashCount > 0 ? "user-trash-full"
                                                                    : "user-trash", true)
-                          : ((tile.isSep || tile.isPlanned || tile.isLaunchpad)
+                          : ((tile.isSep || tile.isPlanned || tile.isGlyph)
                                ? "" : root.iconFor(modelData.id))
                 smooth: true
 
@@ -742,13 +756,13 @@ Item {
               // reserved square, with a bar struck through it. Grey alone reads
               // as "disabled, try again later"; the bar reads as "not a thing
               // yet", which is the truth.
-              // Launchpad. The same rounded square as a barred tile, but at
-              // full strength and with no bar — it is the one glyph tile here
-              // that actually does something, and it has to read that way
-              // sitting next to three that do not.
+              // Launchpad and System Settings. The same rounded square as a
+              // barred tile, but at full strength and with no bar — these are
+              // the glyph tiles that actually do something, and they have to
+              // read that way sitting next to the ones that do not.
               Item {
-                id: launchpadTile
-                visible: tile.isLaunchpad
+                id: glyphTile
+                visible: tile.isGlyph
                 anchors.centerIn: parent
                 width: root.iconSize; height: root.iconSize
 
@@ -771,7 +785,8 @@ Item {
                 Text {
                   anchors.centerIn: parent
                   textFormat: Text.PlainText
-                  text: tile.isLaunchpad ? root.launchpadGlyph : ""
+                  text: tile.isLaunchpad ? root.launchpadGlyph
+                        : (tile.isSettings ? root.settingsGlyph : "")
                   color: root.foreground
                   font.family: Style.font.family
                   font.pixelSize: Math.round(root.iconSize * 0.46)
@@ -848,15 +863,17 @@ Item {
                 onClicked: function (mouse) {
                   var x = tile.mapToItem(null, tile.width / 2, 0).x
                   if (mouse.button === Qt.RightButton) {
-                    // Launchpad has no windows to list and cannot be unpinned,
-                    // so the app menu would be three disabled rows. Left-click
-                    // is the whole interaction.
-                    if (tile.isLaunchpad) return
+                    // A glyph tile has no windows to list and cannot be
+                    // unpinned, so the app menu would be three disabled rows.
+                    // Left-click is the whole interaction.
+                    if (tile.isGlyph) return
                     root.openMenu(tile.isTrash ? root.menuForTrash()
                                   : (tile.isPlanned ? root.menuForPlanned(modelData)
                                                     : root.menuForApp(modelData.id)), x)
                   } else if (tile.isLaunchpad) {
                     root.toggleLaunchpad()
+                  } else if (tile.isSettings) {
+                    root.run(["settings", "open"])
                   } else if (tile.isTrash) {
                     root.run(["dock", "trash", "open"])
                   } else if (tile.isPlanned) {
@@ -876,9 +893,10 @@ Item {
                 anchors.bottomMargin: Style.space(4)
                 textFormat: Text.PlainText
                 text: tile.isLaunchpad ? "Launchpad"
+                      : (tile.isSettings ? "System Settings"
                       : (tile.isTrash ? root.trashLabel()
                       : (tile.isPlanned ? modelData.name + " · not built yet"
-                                        : (tile.isSep ? "" : root.nameFor(modelData.id))))
+                                        : (tile.isSep ? "" : root.nameFor(modelData.id)))))
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
