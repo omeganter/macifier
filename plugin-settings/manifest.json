@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "local.macifier-settings",
+  "name": "Macifier System Settings",
+  "version": "0.1.0",
+  "author": "kolyk",
+  "license": "MIT",
+  "description": "Every Mac setting, tagged by who provides it — Omarchy, Macifier, a plugin, or nobody.",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": { "overlay": "Settings.qml" }
+}

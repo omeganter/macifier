@@ -1,6 +1,10 @@
 # Macifier Settings — plan
 
-**Status:** DESIGNED, not built · 2026-09-14
+**Status:** P0 under way · designed 2026-09-14, building since 2026-09-15
+
+The window exists and renders three of the eleven panes below — Desktop & Dock,
+Keyboard, Trackpad & Mouse — from `share/settings-inventory.json`. The remaining
+panes are data, not code: adding them needs no QML change and no shell restart.
 
 One window that answers "where do I change this?" for someone who has used a Mac
 for ten years and Omarchy for ten minutes.
@@ -437,10 +441,17 @@ switcher loses exist.
 
 ## 7. Open questions
 
-- [ ] Does `overlay` give us a movable, resizable window, or only a fixed layer?
-      `Clipboard.qml` and our `Switcher.qml` are both fixed. A System Settings
-      window that cannot be moved will feel wrong. **Prototype this first — it
-      could change P0 entirely.**
+- [x] Does `overlay` give us a movable, resizable window, or only a fixed layer?
+      **Answered 2026-09-15, from the source rather than a prototype.** An
+      overlay is a full-screen layer-shell `PanelWindow` (`WlrLayer.Overlay`,
+      exclusive keyboard focus, `ExclusionMode.Ignore`) — `Clipboard.qml:314`.
+      The compositor will never move that surface: layer-shell has no move
+      protocol. But because it covers the whole screen, the *card* inside it is
+      ours to place, so dragging and resizing are ordinary QML — explicit `x`/`y`
+      instead of `anchors.centerIn`, a drag handle on the title bar, a grip at
+      the corner. P0 is unchanged. The cost is that we own the clamping: a card
+      parked off a changed screen edge would be unrecoverable, so
+      `Settings.qml` re-clamps on every `PanelWindow` resize.
 - [ ] Can a third-party plugin declare `kinds: ["menu"]` usefully, or is the
       user menu extension file the only way to add Omarchy menu rows?
 - [ ] Should the inventory JSON live in this repo or be fetched? Fetched stays

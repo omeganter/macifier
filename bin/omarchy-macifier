@@ -9,6 +9,7 @@
 #   omarchy-macifier dock placeholders [list|on|off] the "not built yet" tiles
 #   omarchy-macifier dock trash [open|empty|on|off]  the system trash tile
 #   omarchy-macifier panel [open|keys|dock]          summon the panel
+#   omarchy-macifier settings [open|pane <id>]       the System Settings window
 #
 # Every option is independent. Presets are just shorthand for a group of them,
 # so "minimal" and "full" never become states you can be stuck in — turn any
@@ -78,6 +79,21 @@ dock_placeholders_json() {
     return
   fi
   cat "$DOCKPH"
+}
+
+# --- settings ----------------------------------------------------------------
+# The window in plugin-settings/ renders this file and nothing else. Serving it
+# through the CLI rather than letting the QML read a path keeps the install
+# layout in one place — and an empty inventory is a shape the window already
+# handles, so a missing file degrades to "nothing here" instead of an error.
+SETTINGS_INV="$SHARE/settings-inventory.json"
+
+settings_inventory() {
+  if [[ ! -f $SETTINGS_INV ]]; then
+    echo '{"panes":[]}'
+    return
+  fi
+  cat "$SETTINGS_INV"
 }
 
 # --- trash -------------------------------------------------------------------
@@ -624,6 +640,15 @@ case "${1:-status}" in
   # keeps calling nothing but this script.
   panel)   shift
            omarchy-shell -q local.macifier "${1:-open}" ;;
+  # `inventory` is served here so the QML never learns an install path; every
+  # other verb is a straight summon, the same one indirection the panel uses.
+  settings) shift
+           case "${1:-open}" in
+             inventory)          settings_inventory ;;
+             open|hide|toggle)   omarchy-shell -q local.macifier-settings "$1" ;;
+             pane)               omarchy-shell -q local.macifier-settings pane "${2:?pane id required}" ;;
+             *) echo "usage: omarchy-macifier settings [open|hide|toggle|pane <id>|inventory]" >&2; exit 1 ;;
+           esac ;;
   key)     shift
            case "${1:-}" in
              preset) keys_preset "${2:?minimal|full|none}" ;;
@@ -638,5 +663,5 @@ case "${1:-status}" in
   on)      apply_preset "${2:-minimal}" ;;
   off)     apply_preset off ;;
   toggle)  if [[ "$(current_preset)" == off ]]; then apply_preset minimal; else apply_preset off; fi ;;
-  *) echo "usage: omarchy-macifier [option <name> [on|off|toggle] | preset <minimal|full|off> | status [--json] | list | dock ... | panel [open|keys|dock]]" >&2; exit 1 ;;
+  *) echo "usage: omarchy-macifier [option <name> [on|off|toggle] | preset <minimal|full|off> | status [--json] | list | dock ... | panel [open|keys|dock] | settings [open|pane <id>|inventory]]" >&2; exit 1 ;;
 esac

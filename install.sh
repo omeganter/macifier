@@ -17,10 +17,13 @@ install -Dm644 plugin-dock/Dock.qml         "$HOME/.config/omarchy/plugins/macif
 install -Dm644 plugin-dock/Magnification.js "$HOME/.config/omarchy/plugins/macifier-dock/Magnification.js"
 install -Dm644 plugin-launchpad/manifest.json "$HOME/.config/omarchy/plugins/macifier-launchpad/manifest.json"
 install -Dm644 plugin-launchpad/Launchpad.qml "$HOME/.config/omarchy/plugins/macifier-launchpad/Launchpad.qml"
+install -Dm644 plugin-settings/manifest.json  "$HOME/.config/omarchy/plugins/macifier-settings/manifest.json"
+install -Dm644 plugin-settings/Settings.qml   "$HOME/.config/omarchy/plugins/macifier-settings/Settings.qml"
 
 mkdir -p "$HOME/.local/share/macifier/options"
 install -m644 hypr/options/*.lua "$HOME/.local/share/macifier/options/"
-install -Dm644 share/dock-placeholders.json "$HOME/.local/share/macifier/dock-placeholders.json"
+install -Dm644 share/dock-placeholders.json  "$HOME/.local/share/macifier/dock-placeholders.json"
+install -Dm644 share/settings-inventory.json "$HOME/.local/share/macifier/settings-inventory.json"
 
 echo "installed. next:"
 echo "  omarchy plugin enable local.macifier right   # first time only"
