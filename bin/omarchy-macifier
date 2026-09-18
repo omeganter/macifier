@@ -61,7 +61,6 @@ adopted_id()  { adopted_field "$1" 1; }
 adopted_url() { adopted_field "$1" 2; }
 
 plugin_state() { omarchy plugin list 2>/dev/null | awk -v id="$1" '$1 == id { print $2; exit }'; }
-plugin_kinds() { omarchy plugin list 2>/dev/null | awk -v id="$1" '$1 == id { print $4; exit }'; }
 
 # Enabling or disabling a plugin goes through the shell's plugin registry, and
 # for a bar-widget that means the bar rebuilds its whole widget row. Our own
@@ -71,15 +70,35 @@ plugin_kinds() { omarchy plugin list 2>/dev/null | awk -v id="$1" '$1 == id { pr
 # is the only switch that made the menu vanish.
 #
 # Nothing can prevent the rebuild; enabling a bar widget *is* a bar rebuild.
-# So put the panel back once the new widget exists. Backgrounded so the toggle
-# returns at once, and retried because the rebuild is asynchronous and the
-# first summon can land before the replacement widget has registered.
-panel_reopen_later() {
-  ( for _ in 1 2 3 4 5 6 7 8; do
-      sleep 0.25
-      omarchy-shell -q local.macifier open >/dev/null 2>&1 && exit 0
-    done ) >/dev/null 2>&1 &
-  disown 2>/dev/null || true
+# So the panel has to come back afterwards — and the only thing guaranteed to
+# be alive afterwards is the replacement widget. It reopens itself.
+#
+# The first attempt at this summoned the panel from a backgrounded retry loop
+# here, and it did not work: a process spawned by a Quickshell `Process` is
+# killed when that Process is destroyed, and the destruction is the very event
+# we are reacting to. `&` and `disown` do not survive it — Omarchy reaches for
+# `setsid` when it needs a child to outlive the shell
+# (shell/plugins/services/nightlight/Service.qml:50). Even with setsid the
+# timing is guesswork: summon too early and the panel opens on the widget that
+# is about to be torn down.
+#
+# A mark on disk has neither problem. Nothing has to stay running, and nothing
+# has to guess how long a rebuild takes.
+PANEL_REOPEN="$STATE/panel.reopen"
+
+panel_reopen_mark() { mkdir -p "$STATE"; date +%s > "$PANEL_REOPEN"; }
+
+# Claimed at most once, and only if it is fresh. A mark left behind by a crash
+# must not pop the panel open at next login, which would be a haunting rather
+# than a feature.
+panel_reopen_claim() {
+  local marked now
+  [[ -f $PANEL_REOPEN ]] || { echo 0; return; }
+  marked="$(cat "$PANEL_REOPEN" 2>/dev/null || echo 0)"
+  rm -f "$PANEL_REOPEN"
+  now="$(date +%s)"
+  [[ $marked =~ ^[0-9]+$ ]] || { echo 0; return; }
+  if (( now - marked <= 15 )); then echo 1; else echo 0; fi
 }
 
 plugin_is_on() { [[ "$(plugin_state "$(adopted_id "$1")")" == enabled ]]; }
@@ -764,21 +783,26 @@ set_option() {
   local n="$1" action="${2:-toggle}" caller="${3:-}"
   opt_kind "$n" >/dev/null || { echo "unknown option: $n" >&2; exit 1; }
   opt_available "$n" || { echo "option not applicable on this hardware: $n" >&2; exit 1; }
+  # Marked *before* the toggle, not after. Enabling a bar-widget plugin rebuilds
+  # the bar, which destroys the widget that spawned this process — and can take
+  # this process with it. A mark written afterwards is a mark that may never be
+  # written at all. Written first, it is on disk before anything can be killed.
+  #
+  # Only when the panel asked: a terminal user has no panel open and would not
+  # thank us for summoning one. Only `plugin` options can rebuild the bar, so
+  # that is the whole condition — and if one turns out not to have rebuilt
+  # anything, no widget is ever constructed to claim the mark and it expires
+  # unread.
+  if [[ $caller == --from-panel && "$(opt_kind "$n")" == plugin ]]; then
+    panel_reopen_mark
+  fi
+
   case "$action" in
     on)     option_on  "$n" ;;
     off)    option_off "$n" ;;
     toggle) if is_on "$n"; then option_off "$n"; else option_on "$n"; fi ;;
     *)      echo "usage: omarchy-macifier option <name> [on|off|toggle] [--from-panel]" >&2; exit 1 ;;
   esac
-
-  # Only when the panel asked, and only when the switch actually rebuilt the
-  # bar. A terminal user toggling this has no panel open and would not thank us
-  # for summoning one.
-  if [[ $caller == --from-panel && "$(opt_kind "$n")" == plugin ]]; then
-    case "$(plugin_kinds "$(adopted_id "$n")")" in
-      *bar-widget*|*bar*) panel_reopen_later ;;
-    esac
-  fi
 }
 
 apply_preset() {
@@ -893,7 +917,13 @@ case "${1:-status}" in
   # panel is the only place the full editor lives. One indirection, so the QML
   # keeps calling nothing but this script.
   panel)   shift
-           omarchy-shell -q local.macifier "${1:-open}" ;;
+           case "${1:-open}" in
+             # Asked by a freshly built widget: "was I torn down mid-click?"
+             # Answering clears the mark, so only the first widget to ask gets
+             # a yes and a second monitor's copy does not open a panel too.
+             restore-claim) panel_reopen_claim ;;
+             *) omarchy-shell -q local.macifier "${1:-open}" ;;
+           esac ;;
   # `inventory` is served here so the QML never learns an install path; every
   # other verb is a straight summon, the same one indirection the panel uses.
   settings) shift

@@ -156,6 +156,26 @@ Panel {
     onExited: root.refresh()
   }
 
+  // Toggling a bar-widget plugin makes the shell rebuild the bar, and this
+  // widget is destroyed along with the panel the user was standing in front
+  // of. The CLI leaves a mark when that is about to happen; whichever widget
+  // is built next asks for it, and puts the panel back.
+  //
+  // It has to be this way round. Anything the outgoing widget spawned dies
+  // with it, and an external timer would have to guess when the rebuild ends.
+  // The replacement asking on arrival needs neither.
+  Process {
+    id: restoreProc
+    command: ["omarchy-macifier", "panel", "restore-claim"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (String(text).trim() === "1") { root.view = "main"; root.open() }
+      }
+    }
+  }
+
+  Component.onCompleted: restoreProc.running = true
+
   Timer {
     interval: 4000; running: true; repeat: true; triggeredOnStart: true
     onTriggered: root.refresh()
