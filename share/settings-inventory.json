@@ -138,7 +138,7 @@
       "rows": [
         { "label": "Natural scrolling", "omarchy": "Trackpad scrolls the macOS way",
           "tag": "macifier", "action": { "run": ["option", "scroll", "toggle"] },
-          "note": "Trackpad Plus sets this too. Both write the same Hyprland option, so whichever you touch last wins." },
+          "note": "Sets it for every pointing device. Trackpad Plus sets it per trackpad, and a per-device setting wins there — so if this looks stuck, check Trackpad Plus." },
         { "label": "Swipe between Spaces", "omarchy": "Three- and four-finger gestures",
           "tag": "macifier", "action": { "run": ["option", "gestures", "toggle"] } },
         { "label": "Tracking speed", "omarchy": "Pointer speed, per device",

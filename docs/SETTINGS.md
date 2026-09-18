@@ -501,12 +501,26 @@ vendored — so each author's releases reach our users directly.
 | Spotlight | [maajix/omarchy-spotlight](https://github.com/maajix/omarchy-spotlight) | Runs inside the existing shell process, so no cold start |
 | Quick Look for files | [andreconde21/omarchy-quick-look](https://github.com/andreconde21/omarchy-quick-look) | Puts the feature where the Mac puts it: Space on a Nautilus selection, via the supported `org.gnome.NautilusPreviewer` D-Bus hook |
 | macOS shell chrome | [Mudales/omarchy-cupertino](https://github.com/Mudales/omarchy-cupertino) | `full` only, never `minimal`. Writes nothing to disk — all runtime `hyprctl` and in-memory overrides — so it reverts cleanly |
+| Pointer feel: tracking speed, tap to click, acceleration | [davefano/omarchy-trackpad-plus](https://github.com/davefano/omarchy-trackpad-plus) | Adopted 2026-09-18. The only one that goes **per device**: Hyprland exposes just a global `input:sensitivity`, which would drag a USB mouse along with the trackpad, so the plugin writes `hl.device({ name = … })` per trackpad and never `hl.config` — its own test suite asserts that. It also gives a curve editor macOS does not offer at all. Missed by the §9 survey, which listed `lxp-git/omarchy-trackpad` and `maikunari/omarchy-magic-mouse` instead |
 
 The one piece of code Macifier actually contains is wdg's magnification wave;
 its terms are in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
 Bindings for the above live in `hypr/trial/macifier-trial.lua`, not in
-`~/.config/hypr` — Macifier never writes to user-owned config.
+`~/.config/hypr` — Macifier never writes to user-owned config. Trackpad Plus
+gets no binding: it is a bar widget, reached by clicking it, so there is no
+summon to bind.
+
+**One overlap, and it resolves cleanly.** Macifier's `scroll` option and
+Trackpad Plus both set natural scrolling. They do not race: `scroll` writes the
+global `input.touchpad.natural_scroll`, Trackpad Plus writes
+`hl.device({ name = … , natural_scroll = … })` for one trackpad, and Hyprland
+gives a per-device block precedence over the global for that device. So
+Trackpad Plus wins on the trackpad it manages whichever was set last, and
+`scroll` still governs every other pointing device. That is the right layering
+and needs no code — but it does mean turning `scroll` off will not flip a
+trackpad that Trackpad Plus has an opinion about, and the row should say so
+rather than leave the user toggling something that appears dead.
 
 Still nothing to adopt: **Launchpad** (zero published; `xechoz.launchpad` is
 days old) and **Stage Manager**. Both remain builds.
@@ -527,6 +541,7 @@ Prior art surveyed 2026-09-14. All MIT.
 - [andreconde21/omarchy-quick-look](https://github.com/andreconde21/omarchy-quick-look) · [ccdwyer/omarchy-quicklook](https://github.com/ccdwyer/omarchy-quicklook) — Quick Look
 - [ifubaraboye/omarchy-dock](https://github.com/ifubaraboye/omarchy-dock) · [wisangdg/omarchy-magnify-dock](https://github.com/wisangdg/omarchy-magnify-dock) — docks with magnification
 - [Mudales/omarchy-cupertino](https://github.com/Mudales/omarchy-cupertino) · [macarchy/apple-glass-light](https://github.com/macarchy/apple-glass-light) — macOS-flavoured shell chrome
+- [davefano/omarchy-trackpad-plus](https://github.com/davefano/omarchy-trackpad-plus) — per-device trackpad tuning (adopted; a fork of [awkent01/omarchy-touchpad-widget](https://github.com/awkent01/omarchy-touchpad-widget))
 - [maikunari/omarchy-magic-mouse](https://github.com/maikunari/omarchy-magic-mouse) · [lxp-git/omarchy-trackpad](https://github.com/lxp-git/omarchy-trackpad) — Apple pointing devices
 - [aedyle/hypr-trackpad-gestures](https://github.com/aedyle/hypr-trackpad-gestures) — gestures
 - [jankeesvw/omarchy-time-machine](https://github.com/jankeesvw/omarchy-time-machine) — restic backups (105★)
