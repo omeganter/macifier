@@ -300,6 +300,30 @@ Panel {
           }
         }
       }
+
+      PanelSeparator { Layout.fillWidth: true }
+
+      // The dock grew a System Settings tile; the panel never learned about it.
+      // That matters because the dock is itself an option: turn it off and the
+      // settings window has no door left anywhere in the shell, only
+      // `omarchy-macifier settings open` in a terminal. The bar widget is the
+      // one surface that is always there, so it keeps a way in — the mirror of
+      // the dock's own context menu, which ends in "Dock Settings…" and summons
+      // this panel.
+      //
+      // Not a row in Options above: those are toggles the CLI reports, and this
+      // is a door, not a switch. The panel closes behind it because the window
+      // is a full surface of its own and two settings UIs stacked on each other
+      // read as a bug rather than a hand-off.
+      Button {
+        Layout.fillWidth: true
+        text: "System Settings…"
+        bordered: true
+        onClicked: {
+          root.run(["settings", "open"])
+          root.close()
+        }
+      }
     }
 
     // ---------------------------------------------------------------- keys --
