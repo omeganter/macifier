@@ -110,6 +110,72 @@ in_ear = parse(REAL)
 check("lid state is not claimed for a bud outside the case",
       in_ear is not None and in_ear.lid_state is None)
 
+
+# --- model identification ----------------------------------------------------
+# BlueZ's Modalias holds the product id as the device reported it; the
+# advertisement carries the same id byte-swapped, which is why every entry in
+# MODELS ends in 0x20. Confirmed against real hardware: a pair whose Modalias
+# reads p2027 advertises as 0x2720.
+class FakePods(pods.Pods):
+    def __init__(self, modalias):
+        self._modalias = modalias
+        self.target = "/fake"
+        self.target_model_id = None
+        self.threshold = -65
+        self.triggers = {"lid", "inear"}
+        self.lid_counters = {}
+        self.in_ear = {}
+
+    def device_prop(self, path, name, default=None):
+        return self._modalias if name == "Modalias" else default
+
+
+check("Modalias product id is byte-swapped into an advert model id",
+      FakePods("bluetooth:v004Cp2027d0001").model_from_modalias() == 0x2720,
+      "got %r" % FakePods("bluetooth:v004Cp2027d0001").model_from_modalias())
+check("a known model round-trips through Modalias",
+      FakePods("bluetooth:v004Cp2019d0001").model_from_modalias() == 0x1920)
+check("a non-Apple vendor is not claimed",
+      FakePods("bluetooth:v05ACp2027d0001").model_from_modalias() is None)
+check("a missing Modalias is not fatal",
+      FakePods(None).model_from_modalias() is None)
+check("an unparseable Modalias is not fatal",
+      FakePods("usb:v1D6Bp0246").model_from_modalias() is None)
+
+# --- triggers are transitions, not levels ------------------------------------
+# The bug this pins: on the first advertisement there is nothing to compare
+# against. Reading that as a transition means buds already in your ears look as
+# though they just went in, so merely starting the daemon would take audio off
+# your phone.
+IN_EAR = "071901272002777f1100052c6fcda335ddcd6d1677eb595304d1e2"
+
+p = FakePods(None)
+first = p.reached_for(parse(IN_EAR))
+check("a bud already in an ear is not a reason on the first sighting",
+      first == [], "got %r" % first)
+check("the same bud, still in, is still not a reason",
+      p.reached_for(parse(IN_EAR)) == [])
+
+# Out, then back in, is a transition we actually observed.
+OUT_OF_EAR = "071901272000777f1100052c6fcda335ddcd6d1677eb595304d1e2"
+p2 = FakePods(None)
+p2.reached_for(parse(IN_EAR))          # first sighting, in ear
+p2.reached_for(parse(OUT_OF_EAR))      # taken out
+again = p2.reached_for(parse(IN_EAR))  # put back
+check("taking a bud out and putting it back is a reason",
+      "bud in ear" in again, "got %r" % again)
+
+# Same rule for the lid: a case that has been open for an hour is not a request.
+LID_OPEN_1 = "071901272042777f1000042c6fcda335ddcd6d1677eb595304d1e2"
+LID_OPEN_2 = "071901272042777f1100042c6fcda335ddcd6d1677eb595304d1e2"
+p3 = FakePods(None)
+lid_first = p3.reached_for(parse(LID_OPEN_1))
+check("an already-open lid is not a reason on the first sighting",
+      "lid opened" not in lid_first, "got %r" % lid_first)
+opened = p3.reached_for(parse(LID_OPEN_2))
+check("the lid-open counter advancing is a reason",
+      "lid opened" in opened, "got %r" % opened)
+
 print("\n%s" % ("all checks passed" if not failures
                 else "%d failed: %s" % (len(failures), ", ".join(failures))))
 sys.exit(1 if failures else 0)

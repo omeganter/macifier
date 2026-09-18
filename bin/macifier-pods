@@ -35,6 +35,7 @@ the exact check slots in if we ever hold the key.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -398,10 +399,22 @@ class Pods:
         An always-on LE scan is the version of this feature that breaks your
         Bluetooth mouse, so the radio is only held when it could tell us
         something we do not already know.
+
+        Measured: while the AirPods are connected to this machine they stop
+        advertising altogether — the proximity frame exists to attract a
+        pairing, and once they are here there is nothing to attract. So pausing
+        while connected costs no information at all, and the case where the
+        trigger matters (they are away, or the phone has them) is exactly the
+        case where the frames are on the air.
         """
-        if self.target is not None and self.device_prop(
+        connected = self.target is not None and self.device_prop(
             self.target, "Connected", False
-        ):
+        )
+        # One exception to pausing while connected: if we still do not know
+        # which model ours are, this is the only moment we could find out by
+        # watching, so keep bursting until learn_model() has its answer.
+        # Modalias normally answers this at startup and we never get here.
+        if connected and self.target_model_id is not None:
             self.stop_discovery()
             delay = self.scan_seconds + self.idle_seconds
         elif self.idle_seconds <= 0:
@@ -419,13 +432,37 @@ class Pods:
 
     # --- decisions -----------------------------------------------------------
 
+    def model_from_modalias(self):
+        """The advert model id of our own AirPods, read from BlueZ.
+
+        BlueZ stores Modalias as bluetooth:vVVVVpPPPPdDDDD, where PPPP is the
+        product id the device reported when it paired. The proximity
+        advertisement carries that same id with its two bytes the other way
+        round — which is why every entry in MODELS ends in 0x20 — so the two
+        are one byte swap apart.
+
+        This is better than guessing in every way that matters: it is exact, it
+        needs no radio time, and it is readable while the AirPods are away in
+        someone's pocket. learn_model() below stays only as a fallback for a
+        device that somehow reports no Modalias.
+        """
+        modalias = self.device_prop(self.target, "Modalias")
+        if not modalias:
+            return None
+        match = re.match(r"bluetooth:v([0-9A-Fa-f]{4})p([0-9A-Fa-f]{4})", str(modalias))
+        if not match:
+            return None
+        if int(match.group(1), 16) != APPLE_VENDOR_ID:
+            return None
+        product = int(match.group(2), 16)
+        return ((product & 0xFF) << 8) | (product >> 8)
+
     def learn_model(self, advert):
         """Note which product ours are, while we can be sure.
 
-        While our own pair is connected to this machine, a strong AirPods
-        advert on this desk is almost certainly theirs. That is the one moment
-        we can attribute an advert without Apple's key, so it is the moment to
-        write the model down.
+        Fallback for a device with no usable Modalias. While our own pair is
+        connected to this machine, a strong AirPods advert on this desk is
+        almost certainly theirs, which is the one moment attribution is free.
         """
         if self.target_model_id is not None:
             return
@@ -476,9 +513,14 @@ class Pods:
 
         if "inear" in self.triggers:
             now_in_ear = advert.primary_in_ear or advert.secondary_in_ear
-            was_in_ear = self.in_ear.get(key, False)
+            was_in_ear = self.in_ear.get(key)
             self.in_ear[key] = now_in_ear
-            if now_in_ear and not was_in_ear:
+            # `is not None` matters as much as it does for the lid above. On the
+            # first advert we have nothing to compare against, and treating that
+            # as a transition means buds already in your ears are read as just
+            # having gone in — so starting the daemon, or logging in, would grab
+            # audio off your phone mid-song. Wait for a change we actually saw.
+            if now_in_ear and was_in_ear is False:
                 reasons.append("bud in ear")
 
         return reasons
@@ -588,7 +630,15 @@ class Pods:
             objects
         )
         if self.target:
-            log("watching for %s (%s)" % (self.target_name, self.target_address))
+            if self.target_model_id is None:
+                self.target_model_id = self.model_from_modalias()
+                if self.target_model_id is not None:
+                    write_learned_model(self.target_model_id)
+            log("watching for %s (%s)%s" % (
+                self.target_name, self.target_address,
+                "" if self.target_model_id is None
+                else " — %s" % (MODELS.get(self.target_model_id)
+                                or "model 0x%04X" % self.target_model_id)))
         else:
             log(
                 "no AirPods paired yet — watching anyway, but nothing to connect.\n"
@@ -683,8 +733,13 @@ def cmd_status(args):
 
     log("adapter:   %s" % (pods.adapter_path or "none"))
     if target:
+        pods.target = target
         connected = bool(pods.device_prop(target, "Connected", False))
+        model_id = pods.target_model_id or pods.model_from_modalias()
         log("airpods:   %s (%s)" % (name, address))
+        log("model:     %s" % (
+            "unknown" if model_id is None
+            else "%s (0x%04X)" % (MODELS.get(model_id) or "unrecognised", model_id)))
         log("connected: %s" % ("yes" if connected else "no"))
     else:
         log("airpods:   not paired")
