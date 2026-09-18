@@ -175,6 +175,44 @@
           "tag": "notonlinux",
           "note": "No force-touch driver exists for Apple Silicon trackpads. A Dell XPS haptic pad is the only one Omarchy drives." }
       ]
+    },
+    {
+      "id": "bluetooth",
+      "name": "Bluetooth",
+      "glyph": "󰂯",
+      "rows": [
+        { "label": "Bluetooth devices, pair", "omarchy": "omarchy.bluetooth bar widget",
+          "tag": "omarchy", "action": { "menu": "update.hardware.bluetooth" },
+          "note": "AirPods need putting into pairing mode by hand the first time — lid open, hold the case button until the light blinks white. Nothing on any platform can do that part for you." },
+        { "label": "AirPods connect when you pick them up", "omarchy": "omarchy-macifier option airpods",
+          "tag": "macifier", "action": { "run": ["option", "airpods", "toggle"] },
+          "note": "Watches the unencrypted advertisement AirPods broadcast for the iPhone's pairing card, and connects when the lid opens or a bud goes in. Also tells BlueZ to identify as an Apple device, without which AirPods drop the connection after a while." },
+        { "label": "Connect my AirPods now", "omarchy": "omarchy-macifier airpods connect",
+          "tag": "macifier", "action": { "run": ["airpods", "connect"] },
+          "note": "Takes them off the phone. AirPods without iCloud multipoint are a single-link headset, so whoever connects last wins." },
+        { "label": "AirPods battery, ANC, ear detection", "omarchy": "—",
+          "tag": "plugin", "pluginName": "MB-JAMBON/omarchy-pods",
+          "pluginId": "io.github.mb-jambon.omapods",
+          "action": { "plugin": "https://github.com/MB-JAMBON/omarchy-pods" },
+          "note": "Per-pod and case battery plus the listening controls macOS keeps in its Sound menu. Builds the LibrePods daemon, which is the part Macifier deliberately does not reimplement." },
+        { "label": "Hearing aid and Conversation Boost", "omarchy": "—",
+          "tag": "plugin", "pluginName": "MB-JAMBON/omarchy-pods",
+          "pluginId": "io.github.mb-jambon.omapods",
+          "action": { "plugin": "https://github.com/MB-JAMBON/omarchy-pods" },
+          "note": "LibrePods implements these over Apple's accessory protocol; upstream notes the hearing-aid path is the least finished part on Linux." },
+        { "label": "Announce notifications on AirPods", "omarchy": "—",
+          "tag": "planned", "phase": "P4",
+          "note": "Would need a text-to-speech hook on the notification daemon. Nothing reads notifications aloud on Omarchy today; the nearest piece is piper." },
+        { "label": "Find My AirPods", "omarchy": "—",
+          "tag": "notonlinux",
+          "note": "The Find My network is an Apple service keyed to an iCloud account. Closest: the last-seen signal strength in the omarchy-pods panel, which tells you warmer or colder and nothing more." },
+        { "label": "Audio Sharing with a second pair", "omarchy": "—",
+          "tag": "notonlinux",
+          "note": "Apple splits one stream across two pairs inside its own silicon. BlueZ can connect two sinks but cannot keep them in sync; LE Audio broadcast is the eventual answer and no shipping AirPods speak it." },
+        { "label": "Spatial Audio and head tracking", "omarchy": "—",
+          "tag": "notonlinux",
+          "note": "The head-tracking gyroscope data is readable, but the renderer that turns it into positional audio is Apple's. No open implementation exists." }
+      ]
     }
   ]
 }

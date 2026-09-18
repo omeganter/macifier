@@ -177,7 +177,7 @@ test("Macifier rows point at a real macifier verb", () => {
   for (const { row } of allRows) {
     if (row.tag !== "macifier" || !row.action || !row.action.run) continue;
     const verb = row.action.run[0];
-    assert.ok(["option", "dock", "panel", "key", "preset"].includes(verb),
+    assert.ok(["option", "dock", "panel", "key", "preset", "airpods"].includes(verb),
       `row "${row.label}" runs unknown verb "${verb}"`);
   }
 });
