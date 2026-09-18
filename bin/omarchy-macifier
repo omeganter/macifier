@@ -38,7 +38,75 @@ OPTIONS=(
   "launchpad|launchpad|Full-screen grid of every installed application"
   "gestures|hypr|Trackpad gestures: spaces, Mission Control, Expose, Launchpad"
   "airpods|root|AirPods connect when you open the case or put one in"
+  "trackpad|plugin|Per-device trackpad tuning: pointer speed, tap to click, acceleration"
 )
+
+# Third-party plugins Macifier has adopted (docs/SETTINGS.md §8). Nothing is
+# forked and nothing is vendored: we install by the author's own plugin id, so
+# their releases reach our users directly and removal leaves nothing of theirs
+# behind.
+#
+# name|plugin id|repository
+ADOPTED=(
+  "trackpad|davefano.trackpad-plus|https://github.com/davefano/omarchy-trackpad-plus.git"
+)
+
+adopted_field() {
+  local n="$1" i="$2" e
+  for e in "${ADOPTED[@]}"; do
+    [[ ${e%%|*} == "$n" ]] && { IFS='|' read -r -a f <<<"$e"; echo "${f[$i]-}"; return; }
+  done
+}
+adopted_id()  { adopted_field "$1" 1; }
+adopted_url() { adopted_field "$1" 2; }
+
+plugin_state() { omarchy plugin list 2>/dev/null | awk -v id="$1" '$1 == id { print $2; exit }'; }
+
+plugin_is_on() { [[ "$(plugin_state "$(adopted_id "$1")")" == enabled ]]; }
+
+# Install only if it is genuinely absent; otherwise just switch it on. Which of
+# the two happened is recorded, so a later change of heart can tell "Macifier
+# put this here" from "the user already had it".
+plugin_on() {
+  local n="$1" id url state
+  id="$(adopted_id "$n")"; url="$(adopted_url "$n")"
+  state="$(plugin_state "$id")"
+  mkdir -p "$STATE/plugins"
+  case "$state" in
+    # Already running before we got here. Nothing to do to the machine, but
+    # record the claim anyway: without it, `off` could not tell a switch the
+    # user deliberately flipped from a plugin they had all along.
+    enabled) touch "$STATE/plugins/$id.adopted" ;;
+    disabled)
+      omarchy plugin enable "$id" >/dev/null 2>&1 || true
+      touch "$STATE/plugins/$id.enabled-by-macifier" ;;
+    *)
+      omarchy plugin add "$url" --enable --yes >/dev/null 2>&1 \
+        || omarchy plugin add "$url" --enable >/dev/null 2>&1 || true
+      touch "$STATE/plugins/$id.installed-by-macifier" ;;
+  esac
+}
+
+# Off disables, and never uninstalls: disabling is one command to undo and
+# removes no files, while `plugin remove` would throw away the user's
+# per-device settings along with it.
+#
+# Two callers, two right answers, so the reason matters. Flipping this switch
+# off is a deliberate instruction about this plugin and is obeyed. Turning
+# Macifier off entirely is not: §8's promise is that `off` disables exactly
+# what we enabled and nothing else, so a plugin the user had before Macifier
+# adopted it is left running and only our claim is dropped.
+plugin_off() {
+  local n="$1" reason="${2:-explicit}" id
+  id="$(adopted_id "$n")"
+  if [[ $reason == preset && ! -e "$STATE/plugins/$id.enabled-by-macifier" \
+        && ! -e "$STATE/plugins/$id.installed-by-macifier" ]]; then
+    rm -f "$STATE/plugins/$id.adopted"
+    return
+  fi
+  omarchy plugin disable "$id" >/dev/null 2>&1 || true
+  rm -f "$STATE/plugins/$id.enabled-by-macifier" "$STATE/plugins/$id.adopted"
+}
 
 DOCKSET="$STATE/dock"
 
@@ -350,6 +418,11 @@ opt_available() {
     # would enable a service that could only fail. Say so instead.
     airpods) [[ -d /sys/class/bluetooth ]] && command -v python3 >/dev/null \
              && python3 -c 'import dbus, gi' 2>/dev/null ;;
+    # Trackpad Plus's own stated requirements, minus the ones Omarchy
+    # guarantees. Without these the switch would install a plugin that could
+    # only fail, which is worse than saying it does not apply here.
+    trackpad) command -v python3 >/dev/null && command -v hyprctl >/dev/null \
+              && command -v timeout >/dev/null ;;
     *) true ;;
   esac
 }
@@ -384,6 +457,7 @@ is_on() {
     switcher) [[ -f "$HYPR_DIR/macifier-appswitcher.lua" ]] ;;
     dock) [[ -f "$STATE/dock.enabled" ]] ;;
     launchpad) [[ -f "$HYPR_DIR/macifier-launchpad.lua" ]] ;;
+    plugin) plugin_is_on "$n" ;;
   esac
 }
 
@@ -639,6 +713,7 @@ option_on() {
       omarchy plugin enable local.macifier-launchpad >/dev/null 2>&1 || true
       cp "$SHARE/options/launchpad.lua" "$HYPR_DIR/macifier-launchpad.lua"
       reload ;;
+    plugin) plugin_on "$n" ;;
   esac
 }
 
@@ -661,6 +736,7 @@ option_off() {
       rm -f "$HYPR_DIR/macifier-launchpad.lua"
       omarchy plugin disable local.macifier-launchpad >/dev/null 2>&1 || true
       reload ;;
+    plugin) plugin_off "$n" "${2:-explicit}" ;;
   esac
 }
 
@@ -690,7 +766,7 @@ apply_preset() {
     for w in ${wanted[@]+"${wanted[@]}"}; do [[ $w == "$n" ]] && keep=yes; done
     opt_available "$n" || continue
     if [[ $keep == yes ]]; then is_on "$n" || option_on "$n"
-    else is_on "$n" && option_off "$n" || true; fi
+    else is_on "$n" && option_off "$n" preset || true; fi
   done < <(opt_names)
   echo "macifier: $preset"
 }

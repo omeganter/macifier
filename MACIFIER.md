@@ -39,9 +39,21 @@ Then click ` Macifier` in the bar and pick what you want.
 | `dock` | Auto-hiding dock of favourite apps along the bottom | | ● |
 | `launchpad` | Every installed app in a full-screen grid | | ● |
 | `gestures` | Mac trackpad gestures: spaces, Mission Control, Exposé, Launchpad | | ● |
+| `trackpad` | Pointer speed, tap to click and acceleration, per device. Installs [Trackpad Plus](https://github.com/davefano/omarchy-trackpad-plus) | | |
 
 Options are independent. Presets just set a group, so you can flip any one
 afterwards and the rest stay put.
+
+`trackpad` is in no preset on purpose. It is the one option that fetches code
+from outside this repository, and a preset that quietly installed somebody
+else's plugin would be a different kind of promise than the rest of the table
+makes. Turn it on deliberately or not at all.
+
+Turning it off disables the plugin; it never uninstalls it, so your per-device
+settings survive and `omarchy plugin enable davefano.trackpad-plus` brings it
+straight back. Turning **Macifier** off is different: if Trackpad Plus was
+already on this machine before Macifier adopted it, `off` leaves it running and
+only drops our claim. Macifier disables exactly what Macifier enabled.
 
 **Minimal** is a ramp. It fixes what you trip over in the first minute and takes
 nothing away. Most people use it for a week, keep what they liked, drop the rest.

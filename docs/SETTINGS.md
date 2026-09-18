@@ -514,6 +514,19 @@ Bindings for the above live in `hypr/trial/macifier-trial.lua`, not in
 gets no binding: it is a bar widget, reached by clicking it, so there is no
 summon to bind.
 
+**Trackpad Plus is the first adopted plugin to become a Macifier option**, which
+is P1 item 4 arriving one plugin at a time rather than all at once. `trackpad`
+installs it by the author's id when it is absent, enables it when it is present
+but off, and records which of those two it did — so `off` can keep §8's promise
+to disable exactly what we enabled and nothing else. A plugin the user already
+had is adopted rather than claimed: turning Macifier off leaves it running.
+
+Deliberately in **no preset**. Every other option moves files around inside the
+machine; this one fetches code from GitHub, and a preset that did that quietly
+would be making a different promise than the rest of the table. It also never
+uninstalls — disabling costs nothing and keeps the user's per-device settings,
+where `plugin remove` would take them with it.
+
 **One overlap, and it resolves cleanly.** Macifier's `scroll` option and
 Trackpad Plus both set natural scrolling. They do not race: `scroll` writes the
 global `input.touchpad.natural_scroll`, Trackpad Plus writes

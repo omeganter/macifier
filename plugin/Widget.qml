@@ -52,9 +52,14 @@ Panel {
     "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces",
     "dock":        "Auto-hiding app bar along the bottom · tap Edit to choose",
     "launchpad":   "Every app in a grid · ⌘⌥A, or the dock tile",
-    "gestures":    "3 fingers for spaces · up/down for Mission Control and Exposé · 4-finger pinch for Launchpad"
+    "gestures":    "3 fingers for spaces · up/down for Mission Control and Exposé · 4-finger pinch for Launchpad",
+    // The only switch here that reaches outside Macifier: it installs and
+    // enables somebody else's plugin. The hint says whose, because a switch
+    // that quietly fetches code from GitHub should not look like the eight
+    // above it, which only move files around inside this machine.
+    "trackpad":    "Pointer speed, tap to click, acceleration · installs David Fano's Trackpad Plus"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "launchpad", "gestures", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "launchpad", "gestures", "trackpad", "windowtitle"]
 
   // Every option the CLI reports — `order` only decides the order, never
   // membership. The panel used to iterate `order` itself, so an option added
