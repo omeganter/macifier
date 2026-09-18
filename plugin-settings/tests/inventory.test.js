@@ -184,6 +184,58 @@ test("status --json still reports options as objects with a boolean `on`", () =>
     "Settings.qml no longer reads `.on` — it would light every state dot");
 });
 
+// P0's acceptance criterion was "every Omarchy row goes somewhere". A route
+// that no longer exists fails silently: `omarchy menu summon` opens the menu at
+// its root, so the row looks like it worked and simply went to the wrong place.
+// The menu definition is a flat map of dotted ids, which makes the check exact.
+function menuRoutes() {
+  const base = process.env.OMARCHY_PATH || "/usr/share/omarchy";
+  const file = path.join(base, "default", "omarchy", "omarchy-menu.jsonc");
+  if (!fs.existsSync(file)) return null;
+
+  // JSONC: comments and trailing commas. `//` also appears inside strings
+  // (every webapp route is a URL), so the scanner has to track strings.
+  const src = fs.readFileSync(file, "utf8");
+  let out = "", i = 0, inStr = false, esc = false;
+  while (i < src.length) {
+    const c = src[i];
+    if (inStr) {
+      out += c;
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      i++;
+      continue;
+    }
+    if (c === '"') { inStr = true; out += c; i++; continue; }
+    if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; continue; }
+    if (c === "/" && src[i + 1] === "*") { i += 2; while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++; i += 2; continue; }
+    out += c;
+    i++;
+  }
+
+  const menu = JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"));
+  const routes = new Set(Object.keys(menu));
+  for (const entry of Object.values(menu)) {
+    for (const alias of entry.aliases || []) routes.add(alias);
+  }
+  return routes;
+}
+
+test("every menu row points at a route this Omarchy actually has", () => {
+  const routes = menuRoutes();
+  if (!routes) {
+    console.log("       (skipped: no Omarchy menu definition on this machine)");
+    return;
+  }
+  for (const { row } of allRows) {
+    if (!row.action || !row.action.menu) continue;
+    assert.ok(routes.has(row.action.menu),
+      `row "${row.label}" summons "${row.action.menu}", which is not a route — ` +
+      `the menu would open at its root instead`);
+  }
+});
+
 console.log(
   `\n${allRows.length} rows across ${inventory.panes.length} panes; ` +
   (failures === 0 ? "all checks passed" : `${failures} failed`)
