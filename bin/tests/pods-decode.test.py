@@ -131,12 +131,23 @@ class FakePods(pods.Pods):
 
 
 check("Modalias product id is byte-swapped into an advert model id",
-      FakePods("bluetooth:v004Cp2027d0001").model_from_modalias() == 0x2720,
-      "got %r" % FakePods("bluetooth:v004Cp2027d0001").model_from_modalias())
+      FakePods("bluetooth:v004Cp2027d0429").model_from_modalias() == 0x2720,
+      "got %r" % FakePods("bluetooth:v004Cp2027d0429").model_from_modalias())
 check("a known model round-trips through Modalias",
-      FakePods("bluetooth:v004Cp2019d0001").model_from_modalias() == 0x1920)
+      FakePods("bluetooth:v004Cp2019d0429").model_from_modalias() == 0x1920)
 check("a non-Apple vendor is not claimed",
-      FakePods("bluetooth:v05ACp2027d0001").model_from_modalias() is None)
+      FakePods("bluetooth:v05ACp2027d0429").model_from_modalias() is None)
+
+# The trailing dNNNN is a device version and it is not stable: the same pair
+# read d0001 shortly after pairing and d0429 once BlueZ had the full DID
+# record. Nothing may depend on it, so prove the parser ignores it rather than
+# leaving that as a comment.
+check("the volatile device-version field is ignored",
+      FakePods("bluetooth:v004Cp2027d0001").model_from_modalias()
+      == FakePods("bluetooth:v004Cp2027d9999").model_from_modalias()
+      == 0x2720)
+check("a Modalias with no version field at all still parses",
+      FakePods("bluetooth:v004Cp2027").model_from_modalias() == 0x2720)
 check("a missing Modalias is not fatal",
       FakePods(None).model_from_modalias() is None)
 check("an unparseable Modalias is not fatal",
