@@ -187,6 +187,49 @@ opened = p3.reached_for(parse(LID_OPEN_2))
 check("the lid-open counter advancing is a reason",
       "lid opened" in opened, "got %r" % opened)
 
+
+# --- release ------------------------------------------------------------------
+# The release window is a file rather than memory on purpose: it has to outlive
+# the CLI process that sets it and survive the daemon restarting, or "I pressed
+# the button and it took them back anyway" becomes possible.
+import tempfile
+
+tmpdir = tempfile.mkdtemp()
+pods.STATE_DIR = tmpdir
+pods.RELEASE_FILE = os.path.join(tmpdir, "pods.release")
+
+check("no release file means we are not standing down",
+      pods.release_remaining() == 0)
+
+pods.write_release(120)
+check("a release reports roughly the time asked for",
+      110 <= pods.release_remaining() <= 120, "got %r" % pods.release_remaining())
+
+held = FakePods(None)
+reason = held.blocked(parse(REAL))
+check("an active release is a reason not to touch them",
+      reason is not None and "released" in reason, "got %r" % reason)
+check("the release reason is the FIRST one reported, ahead of the call guard",
+      reason is not None and "call" not in reason,
+      "a released device should say so, not blame the call: %r" % reason)
+
+pods.clear_release()
+check("clearing a release ends the stand-down",
+      pods.release_remaining() == 0)
+
+# An expired window must not linger as a permanent refusal.
+pods.write_release(-5)
+check("an expired release is not a reason",
+      pods.release_remaining() == 0, "got %r" % pods.release_remaining())
+pods.clear_release()
+
+# A corrupt file must fail open, not wedge the feature off forever.
+with open(pods.RELEASE_FILE, "w") as fh:
+    fh.write("not a timestamp\n")
+check("a corrupt release file fails open",
+      pods.release_remaining() == 0)
+pods.clear_release()
+
 print("\n%s" % ("all checks passed" if not failures
                 else "%d failed: %s" % (len(failures), ", ".join(failures))))
 sys.exit(1 if failures else 0)

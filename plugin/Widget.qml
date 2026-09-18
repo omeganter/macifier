@@ -345,6 +345,34 @@ Panel {
       // is a door, not a switch. The panel closes behind it because the window
       // is a full surface of its own and two settings UIs stacked on each other
       // read as a bug rather than a hand-off.
+      // Handing the AirPods back to the phone is an action, not a setting, so
+      // it is a button rather than a row in Options — and it only exists while
+      // the option that takes them in the first place is on.
+      //
+      // It lives here because the obvious home, Omarchy's own Bluetooth panel,
+      // is package-owned in /usr/share/omarchy and MACIFIER.md forbids writing
+      // there. This widget is the surface we do own that is always in the bar.
+      //
+      // "Release" and not "Disconnect" deliberately: a disconnect does not hold.
+      // The buds ask to come back within seconds, and BlueZ grants it because
+      // they are a trusted device, so the button would look broken. Release
+      // untrusts them for a few minutes as well, which is what actually lets
+      // them settle on the phone. The panel closes because you press this on
+      // your way out of the door.
+      Button {
+        Layout.fillWidth: true
+        visible: {
+          var e = root.opts["airpods"]
+          return e !== undefined && e.on === true
+        }
+        text: "Release AirPods to iPhone"
+        bordered: true
+        onClicked: {
+          root.run(["airpods", "release"])
+          root.close()
+        }
+      }
+
       Button {
         Layout.fillWidth: true
         text: "System Settings…"

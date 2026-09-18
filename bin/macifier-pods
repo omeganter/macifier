@@ -112,6 +112,10 @@ DEFAULTS = {
     # spends most of its time free. Set idle_seconds=0 to scan continuously.
     "scan_seconds": "6",
     "idle_seconds": "9",
+    # How long `release` keeps us off the AirPods. Long enough to walk away and
+    # let the phone claim them, short enough that you do not have to remember
+    # having pressed it.
+    "release_seconds": "180",
 }
 
 
@@ -119,6 +123,9 @@ STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "macifier"
 )
 MODEL_FILE = os.path.join(STATE_DIR, "pods.model")
+# Set by `release`, read by the daemon. While this is in the future we keep our
+# hands off the AirPods entirely, so they can settle on the phone.
+RELEASE_FILE = os.path.join(STATE_DIR, "pods.release")
 
 
 def log(msg):
@@ -138,6 +145,31 @@ def write_learned_model(model_id):
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(MODEL_FILE, "w") as fh:
             fh.write("%04X\n" % model_id)
+    except OSError:
+        pass
+
+
+def release_remaining():
+    """Seconds left in a deliberate release, or 0 if we are not standing down."""
+    try:
+        with open(RELEASE_FILE) as fh:
+            return max(0, int(float(fh.read().strip()) - time.time()))
+    except (OSError, ValueError):
+        return 0
+
+
+def write_release(seconds):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(RELEASE_FILE, "w") as fh:
+            fh.write("%d\n" % int(time.time() + seconds))
+    except OSError:
+        pass
+
+
+def clear_release():
+    try:
+        os.unlink(RELEASE_FILE)
     except OSError:
         pass
 
@@ -527,6 +559,9 @@ class Pods:
 
     def blocked(self, advert):
         """Reasons not to act, in the order a person would think of them."""
+        remaining = release_remaining()
+        if remaining:
+            return "you released them to your phone, %ds left" % remaining
         if advert.conn_state in BUSY:
             return "they are on a call"
         if self.target is None:
@@ -541,7 +576,49 @@ class Pods:
 
     # --- acting --------------------------------------------------------------
 
+    def set_trusted(self, trusted):
+        """Trust is what makes BlueZ accept a connection the AirPods start.
+
+        Untrusting is the difference between "disconnected" and "released".
+        A plain disconnect does not last: the buds ask to come back within
+        seconds and BlueZ, seeing a trusted device, says yes — which looks
+        exactly like the button not working. Untrusted, an incoming request is
+        refused, so the AirPods give up on us and settle on the phone. Our own
+        outgoing connect still works, because that needs no trust.
+        """
+        try:
+            props = dbus.Interface(
+                self.bus.get_object(BLUEZ, self.target), PROPS_IFACE
+            )
+            props.Set(DEVICE_IFACE, "Trusted", dbus.Boolean(trusted))
+            return True
+        except dbus.DBusException as exc:
+            log("could not set Trusted=%s: %s" % (trusted, exc))
+            return False
+
+    def release(self, seconds):
+        """Hand the AirPods back to the phone, and stay out of the way."""
+        name = self.target_name or "AirPods"
+        self.set_trusted(False)
+        write_release(seconds)
+        try:
+            dev = dbus.Interface(self.bus.get_object(BLUEZ, self.target), DEVICE_IFACE)
+            dev.Disconnect()
+        except dbus.DBusException as exc:
+            # Already disconnected is the common case and not a failure: the
+            # release window is what the user actually asked for.
+            log("disconnect: %s" % str(exc).split(":")[-1].strip())
+        log("released %s for %ds — put them in your ears to use them on the phone"
+            % (name, seconds))
+        notify("%s released" % name,
+               "Yours again here in %d min, or run `omarchy-macifier airpods connect`"
+               % max(1, round(seconds / 60.0)))
+
     def connect(self):
+        # A deliberate connect is also a deliberate cancel of any release, and
+        # re-trusting means ordinary reconnects work again afterwards.
+        clear_release()
+        self.set_trusted(True)
         self.last_attempt = time.time()
         name = self.target_name or "AirPods"
         if self.dry_run:
@@ -722,6 +799,27 @@ def cmd_connect(args):
     loop.run()
 
 
+def cmd_release(args):
+    """Give the AirPods back to the phone.
+
+    Deliberately does not wait around: the point is a button you press on your
+    way out of the door. The stand-down lives in a state file the daemon reads,
+    so it survives this process exiting and the daemon restarting.
+    """
+    seconds = None
+    for arg in args:
+        if arg.isdigit():
+            seconds = int(arg)
+    pods = build()
+    if pods.duty_timer:
+        GLib.source_remove(pods.duty_timer)
+    pods.stop_discovery()
+    if not pods.target:
+        raise SystemExit("macifier-pods: no AirPods paired to this machine")
+    pods.release(seconds if seconds is not None
+                 else int(pods.cfg["release_seconds"]))
+
+
 def cmd_status(args):
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     bus = dbus.SystemBus()
@@ -741,8 +839,13 @@ def cmd_status(args):
             "unknown" if model_id is None
             else "%s (0x%04X)" % (MODELS.get(model_id) or "unrecognised", model_id)))
         log("connected: %s" % ("yes" if connected else "no"))
+        log("trusted:   %s" % (
+            "yes" if pods.device_prop(target, "Trusted", False) else "no (released)"))
     else:
         log("airpods:   not paired")
+    remaining = release_remaining()
+    if remaining:
+        log("released:  yes, %ds left before we touch them again" % remaining)
     log("mode:      %s" % cfg["mode"])
     log("triggers:  %s" % cfg["triggers"])
     log("threshold: %s dBm" % cfg["rssi_threshold"])
@@ -753,6 +856,7 @@ COMMANDS = {
     "watch": cmd_watch,
     "scan": cmd_scan,
     "connect": cmd_connect,
+    "release": cmd_release,
     "status": cmd_status,
 }
 
@@ -761,10 +865,12 @@ USAGE = """macifier-pods — connect AirPods when you reach for them
   macifier-pods watch [--verbose] [--dry-run]   run the daemon
   macifier-pods scan [seconds]                  show what the radio sees
   macifier-pods connect                         connect the paired AirPods now
+  macifier-pods release [seconds]               hand them back to your phone
   macifier-pods status                          what it knows and would do
 
 Config: ~/.config/macifier/pods.conf
   mode=auto|notify|off   rssi_threshold=-65   cooldown=45   triggers=lid,inear
+  release_seconds=180
 """
 
 

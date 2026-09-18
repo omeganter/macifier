@@ -10,7 +10,7 @@
 #   omarchy-macifier dock trash [open|empty|on|off]  the system trash tile
 #   omarchy-macifier dock calendar [open|on|off]     the Chronica calendar tile
 #   omarchy-macifier panel [open|keys|dock]          summon the panel
-#   omarchy-macifier airpods [status|connect|scan]   the AirPods daemon
+#   omarchy-macifier airpods [status|connect|release] the AirPods daemon
 #   omarchy-macifier settings [open|pane <id>]       the System Settings window
 #
 # Every option is independent. Presets are just shorthand for a group of them,
@@ -525,10 +525,18 @@ mediakeys_is_on() { [[ -f $FNMODE_TMPFILE ]]; }
 # First, BlueZ will not hold AirPods for long unless this machine says it is an
 # Apple device: without DeviceID naming vendor 0x004C the buds drop the
 # accessory channel after a short while. BlueZ reads only /etc/bluetooth/main.conf
-# — there is no conf.d — so the keys go into [General] inside a marked block,
+# — there is no conf.d — so the key goes into [General] inside a marked block,
 # and removing that block is the whole revert. Anything the user already had
 # there is left untouched, including a DeviceID of their own, which we refuse
 # to overwrite rather than silently win.
+#
+# DeviceID is the only key we set. An earlier version also set Experimental,
+# on the theory that it enables BlueZ's battery provider — but nothing here
+# reads that: macifier-pods takes battery straight out of the advertisement,
+# and the plugin that does use BlueZ's is free to ask for it itself.
+# Experimental also turns on LE LL Privacy, which changes how bonds are keyed
+# and identities resolved. A setting with no benefit to us and real reach into
+# pairing is not one to hold on to.
 #
 # Second, AirPods in a closed case paired to an iPhone never ask to be
 # reconnected, so nothing here knows you picked them up. macifier-pods watches
@@ -554,7 +562,7 @@ airpods_on() {
     # Appended inside [General], which is the first section of the file, by
     # inserting directly after that header rather than at end-of-file where it
     # would land in whatever section happens to be last.
-    priv /bin/sh -c "sed -i '0,/^\[General\]/s//[General]\n$BT_MARK_OPEN\nDeviceID = bluetooth:004C:0000:0000\nExperimental = true\n$BT_MARK_CLOSE/' '$BT_CONF' && systemctl restart bluetooth"
+    priv /bin/sh -c "sed -i '0,/^\[General\]/s//[General]\n$BT_MARK_OPEN\nDeviceID = bluetooth:004C:0000:0000\n$BT_MARK_CLOSE/' '$BT_CONF' && systemctl restart bluetooth"
   fi
 
   # The unit refers to the binary as %h/.local/bin/macifier-pods, so it needs
@@ -946,8 +954,8 @@ case "${1:-status}" in
   # name: it is what the notification in `mode=notify` asks for.
   airpods) shift
            case "${1:-status}" in
-             connect|status|scan) exec macifier-pods "$@" ;;
-             *) echo "usage: omarchy-macifier airpods [status|connect|scan [seconds]]" >&2; exit 1 ;;
+             connect|release|status|scan) exec macifier-pods "$@" ;;
+             *) echo "usage: omarchy-macifier airpods [status|connect|release [seconds]|scan [seconds]]" >&2; exit 1 ;;
            esac ;;
   preset)  shift; apply_preset "${1:?preset required}" ;;
   status)  if [[ "${2:-}" == "--json" ]]; then status_json; else status_text; fi ;;
