@@ -70,3 +70,33 @@ does not appear.
 **Project:** Chronica (`promaa.clock`)
 **Source:** https://github.com/promaaa/sync-calendar-omarchy
 **Licence:** MIT — theirs, and it stays with their repository.
+
+### LibrePods — the AirPods advertisement format
+
+This entry needs more care than the one above it, because LibrePods is GPL-3.0
+and Macifier is MIT. The distinction it rests on:
+
+**What we use:** no code, and no binary. `bin/macifier-pods` reads Apple's
+proximity-pairing advertisement (manufacturer `0x004C`, TLV type `0x07`) and
+decodes the byte layout LibrePods documents in `linux/ble/blemanager.cpp` —
+which nibble holds which battery, which bit says the lid is open, which byte
+says the buds are on a call. That layout is a fact about Apple's radio traffic,
+not an expression of LibrePods' authorship: our decoder is written against
+BlueZ's D-Bus API in Python and shares no lines, no structure and no build
+system with theirs. We are grateful for the reverse-engineering; we have not
+taken the work product.
+
+**What we do not do:** carry, vendor, link, redistribute or derive from any
+LibrePods source. Nothing in this repository is a GPL-3.0 derivative.
+
+**Where users get the real thing:** the AirPods battery and noise-control UI is
+*not* ours and we do not reimplement it. It is the `omapods` / `omarchy-pods`
+plugin, which builds and ships the LibrePods daemon proper. Macifier points at
+it through `omarchy plugin add`, exactly as it points at Chronica, and that
+plugin's GPL-3.0 obligations live with that plugin — which is precisely why we
+link to it rather than absorb it.
+
+**Author:** Kavish Devar and the LibrePods contributors
+**Project:** LibrePods
+**Source:** https://github.com/librepods-org/librepods
+**Licence:** GPL-3.0 — theirs, and it stays with their repository.

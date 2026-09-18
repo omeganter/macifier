@@ -8,6 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 install -Dm755 bin/omarchy-macifier "$HOME/.local/bin/omarchy-macifier"
+install -Dm755 bin/macifier-pods    "$HOME/.local/bin/macifier-pods"
 install -Dm644 plugin/manifest.json "$HOME/.config/omarchy/plugins/macifier/manifest.json"
 install -Dm644 plugin/Widget.qml    "$HOME/.config/omarchy/plugins/macifier/Widget.qml"
 install -Dm644 plugin-switcher/manifest.json "$HOME/.config/omarchy/plugins/macifier-switcher/manifest.json"
@@ -24,6 +25,9 @@ mkdir -p "$HOME/.local/share/macifier/options"
 install -m644 hypr/options/*.lua "$HOME/.local/share/macifier/options/"
 install -Dm644 share/dock-placeholders.json  "$HOME/.local/share/macifier/dock-placeholders.json"
 install -Dm644 share/settings-inventory.json "$HOME/.local/share/macifier/settings-inventory.json"
+# Staged, not enabled. `option airpods on` is what copies this into
+# ~/.config/systemd/user and starts it, so installing never begins scanning.
+install -Dm644 share/systemd/macifier-pods.service "$HOME/.local/share/macifier/systemd/macifier-pods.service"
 
 echo "installed. next:"
 echo "  omarchy plugin enable local.macifier right   # first time only"

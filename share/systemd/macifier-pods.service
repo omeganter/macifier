@@ -1,0 +1,34 @@
+[Unit]
+Description=Connect AirPods when you reach for them
+Documentation=man:bluetoothd(8)
+# BlueZ is a system service, so this waits for the session bus rather than for
+# bluetooth.service: if the adapter appears late, or disappears and comes back,
+# the daemon re-reads it from the object manager instead of dying.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/macifier-pods watch
+Restart=on-failure
+RestartSec=5s
+
+# It talks to BlueZ over D-Bus and shells out to notify-send. It has no reason
+# to write anywhere but its own state file, so it is not allowed to.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%S/macifier
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=graphical-session.target

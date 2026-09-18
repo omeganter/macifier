@@ -109,6 +109,8 @@ a Mac user can change. The middle column is what Omarchy calls it.
 | Wi-Fi networks, join, forget | `omarchy.network` bar widget | Omarchy |
 | Wi-Fi password / QR | `setup.network.qr`, `omarchy-network-password` | Omarchy |
 | Bluetooth devices, pair | `omarchy.bluetooth` bar widget | Omarchy |
+| AirPods battery, ANC, ear detection | — | Plugin (`omapods`, marketplace #6997 — wraps LibrePods) |
+| AirPods connect when you pick them up | `omarchy-macifier option airpods` | Macifier |
 | DNS servers | `setup.network.dns` (DHCP/Cloudflare/Google/Custom) | Omarchy |
 | VPN | — | Plugin (33 in the registry; pick one, do not build) |
 | Firewall | — | Planned (P4) |
@@ -141,6 +143,7 @@ a Mac user can change. The middle column is what Omarchy calls it.
 | Startup Disk | limine / `omarchy-refresh-limine`; dual-boot macOS via `sid.boot-macos` | Omarchy + Plugin |
 | AutoFill & Passwords | 1Password / Bitwarden install entries | Omarchy (install only) |
 | Handoff & Continuity | — | **Not on Linux** — Apple service. Closest: KDE Connect (`ekollof.omaconnect`) |
+| …but AirPods "handoff" specifically | `omarchy-macifier option airpods` | Macifier (see Bluetooth pane — the audio half is reachable, the app half is not) |
 | Device Management (MDM) | — | **Not on Linux** — no equivalent, and nothing to miss |
 
 ### Appearance

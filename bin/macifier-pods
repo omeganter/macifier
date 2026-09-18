@@ -1,0 +1,740 @@
+#!/usr/bin/env python3
+"""macifier-pods — connect AirPods when you reach for them.
+
+Why this exists. BlueZ reconnects a headset that asks to be reconnected, but
+AirPods sitting in a closed case paired to an iPhone never ask: the phone is
+holding them, and nothing tells this machine you have picked them up. Apple's
+answer is Continuity, which is encrypted against an iCloud account and is not
+something a Linux box can join.
+
+What is available is the advertisement AirPods broadcast *unencrypted* so an
+iPhone can raise its pairing card: manufacturer 0x004C, TLV type 0x07. It
+carries lid state, in-ear state, battery, and what the buds are doing right
+now. That is the one thing Continuity knew and we did not — when you reached
+for them. The rest is ordinary Bluetooth: AirPods without iCloud multipoint
+are a single-link headset, so connecting here takes them off the phone.
+
+So: watch for that advertisement, and when it says the lid just opened or a
+bud just went into an ear, ask BlueZ to connect the AirPods we are already
+paired to.
+
+The byte layout below is Apple's, recovered by the LibrePods project
+(https://github.com/librepods-org/librepods, GPL-3.0) in
+linux/ble/blemanager.cpp. No LibrePods code is copied here — the wire format
+it documents is reimplemented against BlueZ's D-Bus API. See
+THIRD_PARTY_NOTICES.md.
+
+Identification caveat, stated plainly: these advertisements come from rotating
+random addresses, so an advert cannot be *proved* to be yours. LibrePods can
+resolve one, but only with a key it obtains over Apple's accessory protocol
+after connecting. Until we have that key this matches on model, signal
+strength and a cooldown — which mistakes a stranger's identical AirPods for
+yours only when they open a case within about a metre of your laptop, and the
+worst that then happens is your own AirPods connect. resolve_owner() is where
+the exact check slots in if we ever hold the key.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+import dbus
+import dbus.mainloop.glib
+from gi.repository import GLib
+
+BLUEZ = "org.bluez"
+ADAPTER_IFACE = "org.bluez.Adapter1"
+DEVICE_IFACE = "org.bluez.Device1"
+PROPS_IFACE = "org.freedesktop.DBus.Properties"
+OM_IFACE = "org.freedesktop.DBus.ObjectManager"
+
+APPLE_VENDOR_ID = 0x004C
+PROXIMITY_PAIRING = 0x07
+# The proximity-pairing TLV is always 25 bytes of value, so 27 with its type
+# and length in front. Checking the length is not pedantry: Apple sends several
+# unrelated TLV types in this manufacturer field, some of which also begin with
+# 0x07, and decoding one of those yields a plausible-looking device with a 120%
+# battery. Measured on real traffic before this check existed.
+PROXIMITY_TLV_LEN = 0x19
+PROXIMITY_FRAME_LEN = 2 + PROXIMITY_TLV_LEN
+
+CONFIG = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+    "macifier",
+    "pods.conf",
+)
+
+# Apple model ids carried in the type-0x07 payload. Used only to tell "same
+# product as the pair we know about" from "a stranger's".
+MODELS = {
+    0x0220: "AirPods",
+    0x0F20: "AirPods (2nd gen)",
+    0x1320: "AirPods (3rd gen)",
+    0x1920: "AirPods 4",
+    0x1B20: "AirPods 4 (ANC)",
+    0x0A20: "AirPods Max",
+    0x1F20: "AirPods Max (USB-C)",
+    0x0E20: "AirPods Pro",
+    0x1420: "AirPods Pro 2",
+    0x2420: "AirPods Pro 2 (USB-C)",
+}
+
+# data[10] — what whatever is holding the buds is doing with them. Taking them
+# away mid-call is the one failure people do not forgive.
+ST_DISCONNECTED, ST_IDLE, ST_MUSIC = 0x00, 0x04, 0x05
+ST_CALL, ST_RINGING, ST_HANGING_UP = 0x06, 0x07, 0x09
+BUSY = (ST_CALL, ST_RINGING)
+KNOWN_STATES = (
+    ST_DISCONNECTED, ST_IDLE, ST_MUSIC, ST_CALL, ST_RINGING, ST_HANGING_UP,
+)
+
+# A battery nibble is 0-10 in tens of percent, or 15 for "not reported".
+# Anything else means we are not looking at a battery, so the frame is not
+# really a proximity-pairing frame however well it passed the checks above.
+MAX_BATTERY_NIBBLE = 10
+UNKNOWN_BATTERY_NIBBLE = 15
+
+LID_OPEN, LID_CLOSED = 0x00, 0x01
+
+DEFAULTS = {
+    "mode": "auto",          # auto | notify | off
+    "address": "",           # paired AirPods MAC; discovered when blank
+    "rssi_threshold": "-65", # ignore adverts fainter than this
+    "cooldown": "45",        # seconds between connect attempts
+    "triggers": "lid,inear", # what counts as reaching for them
+    # Holding an LE scan open continuously is not free: on many adapters it
+    # keeps other LE peripherals — a Bluetooth mouse or keyboard — from getting
+    # back on the air. So scan in bursts. A lid-open advertises repeatedly for
+    # tens of seconds, so a burst this size still catches it, and the radio
+    # spends most of its time free. Set idle_seconds=0 to scan continuously.
+    "scan_seconds": "6",
+    "idle_seconds": "9",
+}
+
+
+STATE_DIR = os.path.join(
+    os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")), "macifier"
+)
+MODEL_FILE = os.path.join(STATE_DIR, "pods.model")
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def read_learned_model():
+    try:
+        with open(MODEL_FILE) as fh:
+            return int(fh.read().strip(), 16)
+    except (OSError, ValueError):
+        return None
+
+
+def write_learned_model(model_id):
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(MODEL_FILE, "w") as fh:
+            fh.write("%04X\n" % model_id)
+    except OSError:
+        pass
+
+
+def read_config():
+    cfg = dict(DEFAULTS)
+    try:
+        with open(CONFIG) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                if key in cfg:
+                    cfg[key] = value.strip()
+    except FileNotFoundError:
+        pass
+    return cfg
+
+
+class Advert:
+    """One decoded proximity-pairing advertisement."""
+
+    __slots__ = (
+        "address", "rssi", "model", "model_id", "lid_state", "lid_counter",
+        "in_case", "both_in_case", "primary_in_ear", "secondary_in_ear",
+        "conn_state", "left_battery", "right_battery", "case_battery",
+    )
+
+    @classmethod
+    def parse(cls, address, rssi, data):
+        # BlueZ strips the company id, so data[0] is the TLV type and data[1]
+        # its length. Both must match, or this is a different Apple message.
+        if len(data) < PROXIMITY_FRAME_LEN:
+            return None
+        if data[0] != PROXIMITY_PAIRING or data[1] != PROXIMITY_TLV_LEN:
+            return None
+        # data[2] == 0x00 means the buds are in pairing mode, where the
+        # remaining fields mean different things.
+        if data[2] == 0x00:
+            return None
+
+        a = cls()
+        a.address = address
+        a.rssi = rssi
+        a.model_id = (data[3] << 8) | data[4]
+        a.model = MODELS.get(a.model_id)
+
+        status = data[5]
+        pods_battery = data[6]
+        flags_and_case = data[7]
+        lid = data[8]
+        a.conn_state = data[10]
+
+        # Bit 5 says which bud is primary; when it is the right one, the
+        # paired nibbles and flags below are swapped.
+        primary_left = bool(status & 0x20)
+        flipped = not primary_left
+
+        a.in_case = bool(status & 0x40)
+        a.both_in_case = bool(status & 0x04)
+
+        left_nib = (pods_battery >> 4) & 0x0F if flipped else pods_battery & 0x0F
+        right_nib = pods_battery & 0x0F if flipped else (pods_battery >> 4) & 0x0F
+        case_nib = flags_and_case & 0x0F
+
+        # Final sanity gate. A frame can satisfy the type and length above and
+        # still be something else; impossible batteries or an unheard-of
+        # connection state say so, and a wrong decode here would eventually
+        # connect the AirPods for no reason.
+        for nib in (left_nib, right_nib, case_nib):
+            if nib > MAX_BATTERY_NIBBLE and nib != UNKNOWN_BATTERY_NIBBLE:
+                return None
+        if a.conn_state not in KNOWN_STATES:
+            return None
+
+        # 15 means unknown, not 150%.
+        a.left_battery = None if left_nib == UNKNOWN_BATTERY_NIBBLE else left_nib * 10
+        a.right_battery = None if right_nib == UNKNOWN_BATTERY_NIBBLE else right_nib * 10
+        a.case_battery = None if case_nib == UNKNOWN_BATTERY_NIBBLE else case_nib * 10
+
+        xor_factor = flipped ^ a.in_case
+        left_in_ear = bool(status & 0x08) if xor_factor else bool(status & 0x02)
+        right_in_ear = bool(status & 0x02) if xor_factor else bool(status & 0x08)
+        a.primary_in_ear = left_in_ear if primary_left else right_in_ear
+        a.secondary_in_ear = right_in_ear if primary_left else left_in_ear
+
+        a.lid_counter = lid & 0x07
+        # The lid bit only means anything while the reporting bud is in the case.
+        a.lid_state = ((lid >> 3) & 0x01) if a.in_case else None
+        return a
+
+    def describe(self):
+        bits = [self.model or "model 0x%04X" % self.model_id, "%d dBm" % self.rssi]
+        if self.lid_state is not None:
+            bits.append("lid " + ("open" if self.lid_state == LID_OPEN else "closed"))
+            bits.append("opens %d" % self.lid_counter)
+        if self.primary_in_ear or self.secondary_in_ear:
+            bits.append("in ear")
+        bits.append("state 0x%02X" % self.conn_state)
+        buds = [b for b in (self.left_battery, self.right_battery) if b is not None]
+        if buds:
+            bits.append("buds " + "/".join("%d%%" % b for b in buds))
+        if self.case_battery is not None:
+            bits.append("case %d%%" % self.case_battery)
+        return ", ".join(bits)
+
+
+def notify(summary, body=""):
+    if not shutil.which("notify-send"):
+        return
+    try:
+        subprocess.Popen(
+            ["notify-send", "-a", "Macifier", "-i", "audio-headphones", summary, body],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        pass
+
+
+def session_locked():
+    """True when the screen is locked, so we never grab audio at a locked desk.
+
+    Omarchy locks with hyprlock; logind's LockedHint is the portable answer and
+    is checked first. Neither being answerable means we assume unlocked rather
+    than block the feature outright.
+    """
+    session = os.environ.get("XDG_SESSION_ID")
+    if session and shutil.which("loginctl"):
+        try:
+            out = subprocess.run(
+                ["loginctl", "show-session", session, "-p", "LockedHint"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip()
+            if out.endswith("=yes"):
+                return True
+            if out.endswith("=no"):
+                return False
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if shutil.which("pgrep"):
+        try:
+            return subprocess.run(
+                ["pgrep", "-x", "hyprlock"], capture_output=True, timeout=2
+            ).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return False
+
+
+class Pods:
+    def __init__(self, bus, cfg, verbose=False, dry_run=False):
+        self.bus = bus
+        self.cfg = cfg
+        self.verbose = verbose
+        self.dry_run = dry_run
+        self.threshold = int(cfg["rssi_threshold"])
+        self.cooldown = int(cfg["cooldown"])
+        self.scan_seconds = int(cfg["scan_seconds"])
+        self.idle_seconds = int(cfg["idle_seconds"])
+        self.scanning = False
+        self.duty_timer = None
+        self.triggers = {t.strip() for t in cfg["triggers"].split(",") if t.strip()}
+        self.last_attempt = 0.0
+        self.lid_counters = {}
+        self.in_ear = {}
+        self.adapter_path = None
+        self.target = None      # object path of our paired AirPods
+        self.target_address = cfg["address"].upper() or None
+        self.target_name = None
+        # Which product ours are. Learned the first time we see an advert while
+        # our own pair is connected — at that moment an advert on this desk is
+        # almost certainly theirs — and remembered so later matching can reject
+        # a stranger's different model outright.
+        self.target_model_id = read_learned_model()
+
+    # --- BlueZ plumbing ------------------------------------------------------
+
+    def managed(self):
+        om = dbus.Interface(self.bus.get_object(BLUEZ, "/"), OM_IFACE)
+        return om.GetManagedObjects()
+
+    def find_adapter(self, objects):
+        for path, ifaces in objects.items():
+            if ADAPTER_IFACE in ifaces:
+                return path
+        return None
+
+    def find_paired_pods(self, objects):
+        """The AirPods this machine is paired to, if any.
+
+        Matched by name rather than class: BlueZ reports AirPods as a plain
+        audio-headset, which a dozen other headsets also are.
+        """
+        for path, ifaces in objects.items():
+            dev = ifaces.get(DEVICE_IFACE)
+            if not dev or not dev.get("Paired"):
+                continue
+            name = str(dev.get("Name", "") or dev.get("Alias", ""))
+            address = str(dev.get("Address", "")).upper()
+            if self.target_address:
+                if address == self.target_address:
+                    return path, address, name
+                continue
+            lowered = name.lower()
+            if "airpod" in lowered or "beats" in lowered or "powerbeats" in lowered:
+                return path, address, name
+        return None, None, None
+
+    def device_prop(self, path, name, default=None):
+        try:
+            props = dbus.Interface(self.bus.get_object(BLUEZ, path), PROPS_IFACE)
+            return props.Get(DEVICE_IFACE, name)
+        except dbus.DBusException:
+            return default
+
+    def adapter(self):
+        return dbus.Interface(
+            self.bus.get_object(BLUEZ, self.adapter_path), ADAPTER_IFACE
+        )
+
+    def start_discovery(self):
+        if self.scanning:
+            return
+        adapter = self.adapter()
+        # DuplicateData matters: without it BlueZ reports a device once and we
+        # never see the lid change that is the whole point.
+        adapter.SetDiscoveryFilter(
+            {
+                "Transport": dbus.String("le"),
+                "DuplicateData": dbus.Boolean(True),
+            }
+        )
+        try:
+            adapter.StartDiscovery()
+            self.scanning = True
+        except dbus.DBusException as exc:
+            if "InProgress" in str(exc):
+                self.scanning = True
+            else:
+                raise
+
+    def stop_discovery(self):
+        if not self.scanning:
+            return
+        try:
+            self.adapter().StopDiscovery()
+        except dbus.DBusException:
+            pass
+        self.scanning = False
+
+    def duty_cycle(self):
+        """Scan in bursts, and not at all while the AirPods are already here.
+
+        An always-on LE scan is the version of this feature that breaks your
+        Bluetooth mouse, so the radio is only held when it could tell us
+        something we do not already know.
+        """
+        if self.target is not None and self.device_prop(
+            self.target, "Connected", False
+        ):
+            self.stop_discovery()
+            delay = self.scan_seconds + self.idle_seconds
+        elif self.idle_seconds <= 0:
+            self.start_discovery()
+            return False  # continuous: no further ticks needed
+        elif self.scanning:
+            self.stop_discovery()
+            delay = self.idle_seconds
+        else:
+            self.start_discovery()
+            delay = self.scan_seconds
+
+        self.duty_timer = GLib.timeout_add_seconds(delay, self.duty_cycle)
+        return False
+
+    # --- decisions -----------------------------------------------------------
+
+    def learn_model(self, advert):
+        """Note which product ours are, while we can be sure.
+
+        While our own pair is connected to this machine, a strong AirPods
+        advert on this desk is almost certainly theirs. That is the one moment
+        we can attribute an advert without Apple's key, so it is the moment to
+        write the model down.
+        """
+        if self.target_model_id is not None:
+            return
+        if self.target is None or advert.rssi < self.threshold:
+            return
+        if not self.device_prop(self.target, "Connected", False):
+            return
+        self.target_model_id = advert.model_id
+        write_learned_model(advert.model_id)
+        log("learned these are %s" % advert.model)
+
+    def resolve_owner(self, advert):
+        """Is this advert from *our* AirPods?
+
+        Exact answer needs the MagicAccIRK that AirPods hand over the accessory
+        protocol after a connection, which we do not hold; with it this becomes
+        an RPA check against that key. Until then: same product, close enough
+        to be on this desk.
+        """
+        # Deliberately not "is this a model we have heard of": MODELS will always
+        # lag Apple's next release, and refusing to work with brand-new AirPods
+        # is a worse failure than the one that check would prevent. The frame
+        # already had to survive parse()'s sanity gate to get here.
+        if advert.rssi < self.threshold:
+            return False
+        if self.target_model_id and advert.model_id != self.target_model_id:
+            return False
+        return True
+
+    def reached_for(self, advert):
+        """Did the user just reach for these, as opposed to merely own them?
+
+        Two edges count, both transitions rather than levels — a lid that has
+        been open for an hour is not a request to connect.
+        """
+        key = advert.model_id
+        reasons = []
+
+        if "lid" in self.triggers and advert.lid_state is not None:
+            previous = self.lid_counters.get(key)
+            self.lid_counters[key] = advert.lid_counter
+            if (
+                advert.lid_state == LID_OPEN
+                and previous is not None
+                and advert.lid_counter != previous
+            ):
+                reasons.append("lid opened")
+
+        if "inear" in self.triggers:
+            now_in_ear = advert.primary_in_ear or advert.secondary_in_ear
+            was_in_ear = self.in_ear.get(key, False)
+            self.in_ear[key] = now_in_ear
+            if now_in_ear and not was_in_ear:
+                reasons.append("bud in ear")
+
+        return reasons
+
+    def blocked(self, advert):
+        """Reasons not to act, in the order a person would think of them."""
+        if advert.conn_state in BUSY:
+            return "they are on a call"
+        if self.target is None:
+            return "no AirPods paired to this machine"
+        if self.device_prop(self.target, "Connected", False):
+            return "already connected here"
+        if time.time() - self.last_attempt < self.cooldown:
+            return "tried too recently"
+        if session_locked():
+            return "session is locked"
+        return None
+
+    # --- acting --------------------------------------------------------------
+
+    def connect(self):
+        self.last_attempt = time.time()
+        name = self.target_name or "AirPods"
+        if self.dry_run:
+            log("would connect %s (%s)" % (name, self.target_address))
+            return
+        log("connecting %s (%s)" % (name, self.target_address))
+        dev = dbus.Interface(self.bus.get_object(BLUEZ, self.target), DEVICE_IFACE)
+        dev.Connect(
+            reply_handler=lambda: self.on_connected(name),
+            error_handler=lambda exc: self.on_connect_failed(name, exc),
+            timeout=30,
+        )
+
+    def on_connected(self, name):
+        log("connected %s" % name)
+        notify(name + " connected")
+
+    def on_connect_failed(self, name, exc):
+        log("connect failed: %s" % exc)
+        notify("Could not connect " + name, str(exc).split(":")[-1].strip())
+
+    # --- events --------------------------------------------------------------
+
+    def on_device_props(self, interface, changed, invalidated, path=None):
+        if interface != DEVICE_IFACE or "ManufacturerData" not in changed:
+            return
+        rssi = changed.get("RSSI")
+        if rssi is None:
+            rssi = self.device_prop(path, "RSSI", -127)
+        self.handle(path, changed["ManufacturerData"], int(rssi))
+
+    def on_interfaces_added(self, path, ifaces):
+        dev = ifaces.get(DEVICE_IFACE)
+        if not dev or "ManufacturerData" not in dev:
+            return
+        self.handle(path, dev["ManufacturerData"], int(dev.get("RSSI", -127)))
+
+    def handle(self, path, manufacturer_data, rssi):
+        raw = manufacturer_data.get(dbus.UInt16(APPLE_VENDOR_ID))
+        if raw is None:
+            raw = manufacturer_data.get(APPLE_VENDOR_ID)
+        if raw is None:
+            return
+        advert = Advert.parse(path.rsplit("/", 1)[-1], rssi, bytes(bytearray(raw)))
+        if advert is None:
+            return
+        if self.verbose:
+            log(advert.describe())
+
+        self.learn_model(advert)
+        if not self.resolve_owner(advert):
+            return
+
+        reasons = self.reached_for(advert)
+        if not reasons:
+            return
+        if self.cfg["mode"] == "off":
+            return
+
+        why = " and ".join(reasons)
+        reason_not_to = self.blocked(advert)
+        if reason_not_to:
+            log("%s, but %s" % (why, reason_not_to))
+            return
+
+        if self.cfg["mode"] == "notify":
+            notify(
+                (self.target_name or "AirPods") + " are ready",
+                "Run: omarchy-macifier airpods connect",
+            )
+            self.last_attempt = time.time()
+            return
+
+        log("%s — taking them" % why)
+        self.connect()
+
+    # --- lifecycle -----------------------------------------------------------
+
+    def setup(self):
+        objects = self.managed()
+        self.adapter_path = self.find_adapter(objects)
+        if self.adapter_path is None:
+            raise SystemExit("macifier-pods: no Bluetooth adapter")
+
+        self.target, self.target_address, self.target_name = self.find_paired_pods(
+            objects
+        )
+        if self.target:
+            log("watching for %s (%s)" % (self.target_name, self.target_address))
+        else:
+            log(
+                "no AirPods paired yet — watching anyway, but nothing to connect.\n"
+                "Pair them first: open the case, hold the button until the light\n"
+                "blinks white, then `bluetoothctl` -> scan on -> pair <MAC>."
+            )
+
+        self.bus.add_signal_receiver(
+            self.on_device_props,
+            dbus_interface=PROPS_IFACE,
+            signal_name="PropertiesChanged",
+            path_keyword="path",
+        )
+        self.bus.add_signal_receiver(
+            self.on_interfaces_added,
+            dbus_interface=OM_IFACE,
+            signal_name="InterfacesAdded",
+        )
+        self.duty_cycle()
+
+
+def build(verbose=False, dry_run=False, continuous=False):
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+    cfg = read_config()
+    if continuous:
+        cfg["idle_seconds"] = "0"
+    pods = Pods(bus, cfg, verbose=verbose, dry_run=dry_run)
+    pods.setup()
+    return pods
+
+
+def cmd_watch(args):
+    pods = build(verbose="--verbose" in args, dry_run="--dry-run" in args)
+    log("mode=%s threshold=%s dBm cooldown=%ss triggers=%s scan=%s/%ss"
+        % (pods.cfg["mode"], pods.threshold, pods.cooldown,
+           ",".join(sorted(pods.triggers)),
+           pods.scan_seconds, pods.idle_seconds))
+    GLib.MainLoop().run()
+
+
+def cmd_scan(args):
+    """Print every AirPods advertisement we can see, and connect nothing.
+
+    This is the tool for finding out whether the radio side works at all —
+    it needs no pairing, so it answers "can this machine see my AirPods?"
+    before anything else is set up.
+    """
+    seconds = 30
+    for arg in args:
+        if arg.isdigit():
+            seconds = int(arg)
+    # Diagnostics get a continuous scan: a burst cycle that happened to be idle
+    # when you opened the case would look like "the radio cannot see them".
+    pods = build(verbose=True, dry_run=True, continuous=True)
+    pods.cfg["mode"] = "off"
+    log("listening %ds — open the case near the machine" % seconds)
+    loop = GLib.MainLoop()
+    GLib.timeout_add_seconds(seconds, lambda: (loop.quit(), False)[1])
+    loop.run()
+
+
+def cmd_connect(args):
+    pods = build()
+    # Nothing here depends on seeing an advertisement, and scanning while
+    # connecting only competes with the connection for the radio.
+    if pods.duty_timer:
+        GLib.source_remove(pods.duty_timer)
+    pods.stop_discovery()
+    if not pods.target:
+        raise SystemExit("macifier-pods: no AirPods paired to this machine")
+    loop = GLib.MainLoop()
+    pods.on_connected = lambda name: (log("connected " + name), loop.quit())
+    pods.on_connect_failed = lambda name, exc: (
+        log("connect failed: %s" % exc),
+        loop.quit(),
+    )
+    pods.last_attempt = 0
+    pods.connect()
+    GLib.timeout_add_seconds(35, lambda: (loop.quit(), False)[1])
+    loop.run()
+
+
+def cmd_status(args):
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+    cfg = read_config()
+    pods = Pods(bus, cfg)
+    objects = pods.managed()
+    pods.adapter_path = pods.find_adapter(objects)
+    target, address, name = pods.find_paired_pods(objects)
+
+    log("adapter:   %s" % (pods.adapter_path or "none"))
+    if target:
+        connected = bool(pods.device_prop(target, "Connected", False))
+        log("airpods:   %s (%s)" % (name, address))
+        log("connected: %s" % ("yes" if connected else "no"))
+    else:
+        log("airpods:   not paired")
+    log("mode:      %s" % cfg["mode"])
+    log("triggers:  %s" % cfg["triggers"])
+    log("threshold: %s dBm" % cfg["rssi_threshold"])
+    log("locked:    %s" % ("yes" if session_locked() else "no"))
+
+
+COMMANDS = {
+    "watch": cmd_watch,
+    "scan": cmd_scan,
+    "connect": cmd_connect,
+    "status": cmd_status,
+}
+
+USAGE = """macifier-pods — connect AirPods when you reach for them
+
+  macifier-pods watch [--verbose] [--dry-run]   run the daemon
+  macifier-pods scan [seconds]                  show what the radio sees
+  macifier-pods connect                         connect the paired AirPods now
+  macifier-pods status                          what it knows and would do
+
+Config: ~/.config/macifier/pods.conf
+  mode=auto|notify|off   rssi_threshold=-65   cooldown=45   triggers=lid,inear
+"""
+
+
+def main(argv):
+    args = argv[1:]
+    # Checked before the default below, or `--help` falls through to `watch`
+    # and silently starts the daemon instead of printing anything.
+    if args and args[0] in ("-h", "--help", "help"):
+        print(USAGE)
+        return 0
+    command = args[0] if args and not args[0].startswith("-") else "watch"
+    handler = COMMANDS.get(command)
+    if handler is None:
+        sys.stderr.write(USAGE)
+        return 2
+    rest = args[1:] if args and args[0] == command else args
+    try:
+        handler(rest)
+    except KeyboardInterrupt:
+        pass
+    except dbus.DBusException as exc:
+        sys.stderr.write("macifier-pods: %s\n" % exc)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

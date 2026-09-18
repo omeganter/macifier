@@ -10,6 +10,7 @@
 #   omarchy-macifier dock trash [open|empty|on|off]  the system trash tile
 #   omarchy-macifier dock calendar [open|on|off]     the Chronica calendar tile
 #   omarchy-macifier panel [open|keys|dock]          summon the panel
+#   omarchy-macifier airpods [status|connect|scan]   the AirPods daemon
 #   omarchy-macifier settings [open|pane <id>]       the System Settings window
 #
 # Every option is independent. Presets are just shorthand for a group of them,
@@ -36,6 +37,7 @@ OPTIONS=(
   "dock|dock|Auto-hiding dock of favourite apps along the bottom"
   "launchpad|launchpad|Full-screen grid of every installed application"
   "gestures|hypr|Trackpad gestures: spaces, Mission Control, Expose, Launchpad"
+  "airpods|root|AirPods connect when you open the case or put one in"
 )
 
 DOCKSET="$STATE/dock"
@@ -344,6 +346,10 @@ FNMODE_TMPFILE="/etc/tmpfiles.d/macifier-fnmode.conf"
 opt_available() {
   case "$1" in
     mediakeys) [[ -e $FNMODE_PARAM ]] ;;
+    # No Bluetooth radio, or no python-dbus to talk to it with, and the switch
+    # would enable a service that could only fail. Say so instead.
+    airpods) [[ -d /sys/class/bluetooth ]] && command -v python3 >/dev/null \
+             && python3 -c 'import dbus, gi' 2>/dev/null ;;
     *) true ;;
   esac
 }
@@ -352,10 +358,12 @@ opt_available() {
 # explain itself and reuse a cached credential; a panel click has nowhere to
 # type a password, so it gets pkexec's dialog.
 #
-# TODO: this is the first option to need privilege and it will not be the last.
-# A general pattern (a narrow NOPASSWD sudoers entry, as Omarchy already ships
-# for asdcontrol and omarchy-dns) is likely the right answer once there are
-# two or three of these. Revisit before adding the next one.
+# `airpods` is the second of these, so the dispatch that used to call
+# mediakeys_on/off directly now calls "${n}_on" / "${n}_off" / "${n}_is_on" —
+# a root-kind option supplies those three and owns its own revert. That is as
+# far as the generalisation needs to go today. A narrow NOPASSWD sudoers entry
+# (as Omarchy ships for asdcontrol and omarchy-dns) is still the right answer
+# once a third one lands and two password prompts in a row start to grate.
 priv() {
   if [[ -t 0 ]]; then sudo "$@"; else pkexec "$@"; fi
 }
@@ -371,7 +379,7 @@ is_on() {
   case "$(opt_kind "$n")" in
     hypr) [[ -f "$HYPR_DIR/macifier-$n.lua" ]] ;;
     bar)  [[ -f "$STATE/$n" ]] ;;
-    root) [[ -f $FNMODE_TMPFILE ]] ;;
+    root) "${n}_is_on" ;;
     keys) [[ -s $KEYSET ]] ;;
     switcher) [[ -f "$HYPR_DIR/macifier-appswitcher.lua" ]] ;;
     dock) [[ -f "$STATE/dock.enabled" ]] ;;
@@ -394,6 +402,62 @@ mediakeys_off() {
   local prior; prior="$(cat "$STATE/mediakeys.prior" 2>/dev/null || echo 2)"
   priv /bin/sh -c "rm -f '$FNMODE_TMPFILE' && printf '%s' '$prior' > '$FNMODE_PARAM'"
   rm -f "$STATE/mediakeys.prior"
+}
+
+mediakeys_is_on() { [[ -f $FNMODE_TMPFILE ]]; }
+
+# --- airpods -----------------------------------------------------------------
+# Two separate problems wear one switch here.
+#
+# First, BlueZ will not hold AirPods for long unless this machine says it is an
+# Apple device: without DeviceID naming vendor 0x004C the buds drop the
+# accessory channel after a short while. BlueZ reads only /etc/bluetooth/main.conf
+# — there is no conf.d — so the keys go into [General] inside a marked block,
+# and removing that block is the whole revert. Anything the user already had
+# there is left untouched, including a DeviceID of their own, which we refuse
+# to overwrite rather than silently win.
+#
+# Second, AirPods in a closed case paired to an iPhone never ask to be
+# reconnected, so nothing here knows you picked them up. macifier-pods watches
+# for the advertisement that does say so. See bin/macifier-pods.
+BT_CONF="/etc/bluetooth/main.conf"
+BT_MARK_OPEN="# >>> macifier airpods >>>"
+BT_MARK_CLOSE="# <<< macifier airpods <<<"
+PODS_UNIT="macifier-pods.service"
+
+airpods_is_on() { [[ -f "$HOME/.config/systemd/user/$PODS_UNIT" ]]; }
+
+airpods_conflicting_deviceid() {
+  grep -Eq '^[[:space:]]*DeviceID[[:space:]]*=' "$BT_CONF" 2>/dev/null
+}
+
+airpods_on() {
+  mkdir -p "$STATE" "$HOME/.config/systemd/user"
+
+  if airpods_conflicting_deviceid; then
+    echo "$BT_CONF already sets DeviceID; leaving it alone." >&2
+    echo "AirPods need 'DeviceID = bluetooth:004C:0000:0000' — set it yourself if that is what you want." >&2
+  elif ! grep -qF "$BT_MARK_OPEN" "$BT_CONF" 2>/dev/null; then
+    # Appended inside [General], which is the first section of the file, by
+    # inserting directly after that header rather than at end-of-file where it
+    # would land in whatever section happens to be last.
+    priv /bin/sh -c "sed -i '0,/^\[General\]/s//[General]\n$BT_MARK_OPEN\nDeviceID = bluetooth:004C:0000:0000\nExperimental = true\n$BT_MARK_CLOSE/' '$BT_CONF' && systemctl restart bluetooth"
+  fi
+
+  # The unit refers to the binary as %h/.local/bin/macifier-pods, so it needs
+  # no rewriting here — install.sh and this switch agree on one location.
+  install -Dm644 "$SHARE/systemd/$PODS_UNIT" "$HOME/.config/systemd/user/$PODS_UNIT"
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$PODS_UNIT" >/dev/null 2>&1 || true
+}
+
+airpods_off() {
+  systemctl --user disable --now "$PODS_UNIT" >/dev/null 2>&1 || true
+  rm -f "$HOME/.config/systemd/user/$PODS_UNIT"
+  systemctl --user daemon-reload
+  if grep -qF "$BT_MARK_OPEN" "$BT_CONF" 2>/dev/null; then
+    priv /bin/sh -c "sed -i '/$BT_MARK_OPEN/,/$BT_MARK_CLOSE/d' '$BT_CONF' && systemctl restart bluetooth"
+  fi
 }
 
 # --- the one option that touches state we do not own -------------------------
@@ -558,7 +622,7 @@ option_on() {
   case "$(opt_kind "$n")" in
     hypr) mkdir -p "$HYPR_DIR"; cp "$SHARE/options/$n.lua" "$HYPR_DIR/macifier-$n.lua"; reload ;;
     bar)  bar_on ;;
-    root) mediakeys_on ;;
+    root) "${n}_on" ;;
     keys) [[ -s $KEYSET ]] || keys_preset_set minimal > "$KEYSET"; keys_apply ;;
     switcher)
       omarchy plugin enable local.macifier-switcher >/dev/null 2>&1 || true
@@ -583,7 +647,7 @@ option_off() {
   case "$(opt_kind "$n")" in
     hypr) rm -f "$HYPR_DIR/macifier-$n.lua"; reload ;;
     bar)  bar_off ;;
-    root) mediakeys_off ;;
+    root) "${n}_off" ;;
     keys) : > "$KEYSET"; keys_apply ;;
     switcher)
       rm -f "$HYPR_DIR/macifier-appswitcher.lua"
@@ -741,6 +805,14 @@ case "${1:-status}" in
              status) if [[ "${2:-}" == "--json" ]]; then keys_status_json; else keys_status_text; fi ;;
              "")     keys_status_text ;;
              *)      set_key "$1" "${2:-toggle}" ;;
+           esac ;;
+  # Everything past the on/off switch belongs to the daemon, so hand it over
+  # rather than reimplement it. `connect` is the one users are told to run by
+  # name: it is what the notification in `mode=notify` asks for.
+  airpods) shift
+           case "${1:-status}" in
+             connect|status|scan) exec macifier-pods "$@" ;;
+             *) echo "usage: omarchy-macifier airpods [status|connect|scan [seconds]]" >&2; exit 1 ;;
            esac ;;
   preset)  shift; apply_preset "${1:?preset required}" ;;
   status)  if [[ "${2:-}" == "--json" ]]; then status_json; else status_text; fi ;;
