@@ -362,6 +362,7 @@ overtaken it in places. What is true today:
 | **P2** — Launchpad | **shipped** as `plugin-launchpad/`. |
 | **P2** — modifier keys | partial. `cmdkeys` exists; the comparison against `oliverlukschander.mac-option` and `asaharan.omackey` is still unwritten. |
 | **P3 / P4** | untouched. |
+| **The dock's own menu** | broken in the way that matters: half of it is inert, and one row is stale. Noted 2026-09-19, to fix next session — see below. |
 
 Two things arrived that the plan never anticipated, both by taking someone
 else's work rather than writing our own: the dock's magnification wave (wdg's,
@@ -370,8 +371,39 @@ is a phase item. Both are the pattern the plan should probably prefer: the wave
 we carry under wdg's licence, Chronica we only call. `THIRD_PARTY_NOTICES.md`
 keeps the two apart, because "contains" and "drives" are different claims.
 
-**Next:** P1.3, because it is load-bearing, then P1.2 on top of the value
-format it establishes.
+**Next:** the dock's own menu, because it is small and it is the surface a
+user hits first; then P1.3, because it is load-bearing, and P1.2 on top of the
+value format it establishes.
+
+### The dock's settings menu — noted 2026-09-19, to fix next session
+
+Right-clicking the dock background opens `menuForDock()`
+(`plugin-dock/Dock.qml:591`) — where macOS puts Hiding, Magnification, Position
+and Minimise. Ours has eight rows: a title, **four inert ones**, and three that
+act. The inert four come first, exactly where the working controls belong, and
+what acts sits underneath them — two checks and *Dock Settings…*. The greyed
+notes are written in our vocabulary rather than the user's, too — `(P1)`,
+`(P3)`, "or adopt a published plugin" are notes to ourselves, shown to someone
+who right-clicked a dock.
+
+One of the four is simply wrong. *Turn Magnification On — P1* has been stale
+since the wave landed; `share/settings-inventory.json` already records
+Magnification as Macifier's, on whenever the dock is. The menu claims we have
+not built something the window says we shipped, which is worse than either
+answer alone.
+
+This is not a §2 violation — every grey row does say why, and the barred dock
+tile and the window's grey rows follow the same rule. It is the rule meeting
+its limit: §2 governs a row inside a long list a user is *reading*, and a
+right-click menu is a thing a user is *using*. A menu that opens on four dead
+lines reads as a broken menu, not as an honest one, however well each line
+explains itself.
+
+**The fix:** drop or demote the four planned rows so the menu opens on
+something clickable; correct Magnification against the inventory; and rewrite
+whatever note survives without a phase code in it. P1.2 then closes the gap for
+real — Position, Size and Auto-hide become live rows in the same pass that
+makes them live options.
 
 ### P0 — the window, with nothing new behind it *(the whole point of starting here)* — SHIPPED
 
