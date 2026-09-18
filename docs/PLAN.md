@@ -291,9 +291,19 @@ gated on `omarchy-hw-apple-silicon` there regardless.
 
 ## 7. Immediate next step
 
-Phase 0, item 1 only: the Hyprland fragment with `natural_scroll`, written directly to the
+> **Superseded 2026-09-18.** What follows was true when written and is kept because the
+> reasoning still holds; it is no longer what to do next. Phases 0–2 of *this* document are
+> done — the fragment, the script, the menu entry, and then a good deal more than was
+> planned here: a dock, an app switcher, Launchpad, a System Settings window. The live plan
+> is now `docs/SETTINGS.md` §5, which tracks its own phases and says where they stand.
+>
+> The part of this document that has **not** been acted on is Phase 4 — propose. Nothing has
+> been offered to Marcelo or upstream, and the four open questions in §6 are still open. That
+> is the real next step, and it has been the next step for a while.
+
+~~Phase 0, item 1 only: the Hyprland fragment with `natural_scroll`, written directly to the
 state directory, toggled on and off by hand to prove the round trip is clean. One file, one
-setting, no repo, no proposal. Everything else waits on that working.
+setting, no repo, no proposal. Everything else waits on that working.~~
 
 ---
 

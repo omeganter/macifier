@@ -344,7 +344,33 @@ exactly Macifier's audience, and it is where a Phase-4 proposal should go first.
 Sized in the same unit as everything else in this repo: a phase is what one
 person can finish and live on for a week.
 
-### P0 — the window, with nothing new behind it *(the whole point of starting here)*
+### Where this actually stands — 2026-09-18
+
+The plan below was written before any of it shipped, and the code has since
+overtaken it in places. What is true today:
+
+| | |
+|---|---|
+| **P0** — the window | **shipped.** 48 rows across 3 panes, every tag rendered, install and deep-link actions live. Held by `plugin-settings/tests/inventory.test.js`. |
+| **P1.1** — trackpad gestures | **shipped.** `hypr/options/gestures.lua`, option `gestures`. |
+| **P1.2** — dock position / size / auto-hide | not started. Still three `Planned` rows. |
+| **P1.3** — repeat rate, tracking speed | not started. **This is the one that unblocks the rest:** every option is still a boolean, and these are the first that are values. |
+| **P1.4** — plugin install rows | **shipped.** The window installs with `omarchy plugin add … --enable`, enables what is present but disabled, and never offers to install what is already running. |
+| **P2** — Launchpad | **shipped** as `plugin-launchpad/`. |
+| **P2** — modifier keys | partial. `cmdkeys` exists; the comparison against `oliverlukschander.mac-option` and `asaharan.omackey` is still unwritten. |
+| **P3 / P4** | untouched. |
+
+Two things arrived that the plan never anticipated, both by taking someone
+else's work rather than writing our own: the dock's magnification wave (wdg's,
+vendored) and the Calendar tile (promaaa's Chronica, driven over IPC). Neither
+is a phase item. Both are the pattern the plan should probably prefer: the wave
+we carry under wdg's licence, Chronica we only call. `THIRD_PARTY_NOTICES.md`
+keeps the two apart, because "contains" and "drives" are different claims.
+
+**Next:** P1.3, because it is load-bearing, then P1.2 on top of the value
+format it establishes.
+
+### P0 — the window, with nothing new behind it *(the whole point of starting here)* — SHIPPED
 
 Build `plugin-settings/` as an `overlay` plugin. Sidebar + rows + search + the
 five status tags. Wire **only** what already exists: the seven Macifier options
@@ -359,7 +385,7 @@ visible and inert from day one. The window is useful the moment it can answer
 - Deep links use `omarchy menu summon <route>` (e.g. `setup.monitors`).
 - **Acceptance:** every row in §3 is present with the right tag; every `Omarchy` row goes somewhere; `off` still reverts cleanly.
 
-### P1 — the cheap wins the inventory exposed
+### P1 — the cheap wins the inventory exposed — 2 of 4 shipped
 
 Four things that are nearly free and each remove a daily annoyance:
 
@@ -368,7 +394,7 @@ Four things that are nearly free and each remove a daily annoyance:
 3. **Keyboard repeat rate + trackpad tracking speed** — sliders writing a Lua fragment. First Macifier options that are *values*, not booleans; the state format needs to grow to hold them. Do this deliberately, it is the foundation for P2. *One day.*
 4. **Plugin install rows** — the `Plugin` tag becomes actionable: `omarchy plugin add <url> --enable`, recorded in `~/.local/state/macifier/plugins` so `off` disables exactly what we enabled. *One day.*
 
-### P2 — Launchpad, and modifier keys
+### P2 — Launchpad, and modifier keys — Launchpad shipped
 
 **Launchpad is the one genuine gap with no published plugin.** It is also the
 easiest big Mac feature to build well, because we already have every piece: the
