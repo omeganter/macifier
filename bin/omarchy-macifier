@@ -61,6 +61,26 @@ adopted_id()  { adopted_field "$1" 1; }
 adopted_url() { adopted_field "$1" 2; }
 
 plugin_state() { omarchy plugin list 2>/dev/null | awk -v id="$1" '$1 == id { print $2; exit }'; }
+plugin_kinds() { omarchy plugin list 2>/dev/null | awk -v id="$1" '$1 == id { print $4; exit }'; }
+
+# Enabling or disabling a plugin goes through the shell's plugin registry, and
+# for a bar-widget that means the bar rebuilds its whole widget row. Our own
+# widget is on that row, so it is destroyed and recreated — and the panel the
+# user was standing in front of goes with it. Every other option Macifier
+# toggles is an overlay plugin, which never touches the bar, which is why this
+# is the only switch that made the menu vanish.
+#
+# Nothing can prevent the rebuild; enabling a bar widget *is* a bar rebuild.
+# So put the panel back once the new widget exists. Backgrounded so the toggle
+# returns at once, and retried because the rebuild is asynchronous and the
+# first summon can land before the replacement widget has registered.
+panel_reopen_later() {
+  ( for _ in 1 2 3 4 5 6 7 8; do
+      sleep 0.25
+      omarchy-shell -q local.macifier open >/dev/null 2>&1 && exit 0
+    done ) >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+}
 
 plugin_is_on() { [[ "$(plugin_state "$(adopted_id "$1")")" == enabled ]]; }
 
@@ -741,15 +761,24 @@ option_off() {
 }
 
 set_option() {
-  local n="$1" action="${2:-toggle}"
+  local n="$1" action="${2:-toggle}" caller="${3:-}"
   opt_kind "$n" >/dev/null || { echo "unknown option: $n" >&2; exit 1; }
   opt_available "$n" || { echo "option not applicable on this hardware: $n" >&2; exit 1; }
   case "$action" in
     on)     option_on  "$n" ;;
     off)    option_off "$n" ;;
     toggle) if is_on "$n"; then option_off "$n"; else option_on "$n"; fi ;;
-    *)      echo "usage: omarchy-macifier option <name> [on|off|toggle]" >&2; exit 1 ;;
+    *)      echo "usage: omarchy-macifier option <name> [on|off|toggle] [--from-panel]" >&2; exit 1 ;;
   esac
+
+  # Only when the panel asked, and only when the switch actually rebuilt the
+  # bar. A terminal user toggling this has no panel open and would not thank us
+  # for summoning one.
+  if [[ $caller == --from-panel && "$(opt_kind "$n")" == plugin ]]; then
+    case "$(plugin_kinds "$(adopted_id "$n")")" in
+      *bar-widget*|*bar*) panel_reopen_later ;;
+    esac
+  fi
 }
 
 apply_preset() {
@@ -817,7 +846,7 @@ status_text() {
 }
 
 case "${1:-status}" in
-  option)  shift; set_option "${1:?option name required}" "${2:-toggle}" ;;
+  option)  shift; set_option "${1:?option name required}" "${2:-toggle}" "${3:-}" ;;
   dock)    shift
            case "${1:-}" in
              apps)   dock_apps_json ;;

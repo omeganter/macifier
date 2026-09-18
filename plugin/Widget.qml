@@ -301,7 +301,12 @@ Panel {
             checked: entry !== undefined && entry.on === true
             interactive: entry !== undefined && entry.available === true
             opacity: interactive ? 1.0 : 0.4
-            onToggled: root.run(["option", modelData, checked ? "off" : "on"])
+            // --from-panel tells the CLI a panel is open in front of it. It
+            // matters for options that enable a bar-widget plugin: the shell
+            // rebuilds the bar, this widget is destroyed with it, and the CLI
+            // summons the panel back once the replacement exists. Harmless for
+            // every other option, which never touches the bar.
+            onToggled: root.run(["option", modelData, checked ? "off" : "on", "--from-panel"])
           }
         }
       }
