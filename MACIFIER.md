@@ -86,6 +86,7 @@ omarchy-macifier option scroll on|off
 omarchy-macifier key F off
 omarchy-macifier key preset minimal|full|none
 omarchy-macifier dock placeholders on|off
+omarchy-macifier dock calendar on|off
 omarchy-macifier panel open|keys|dock
 ```
 
@@ -146,7 +147,7 @@ wondering whether you looked in the wrong place.
 ### The barred tiles
 
 After a separator sit the Mac dock staples Macifier does not have yet —
-Mission Control, System Settings, Stage Manager — drawn grey
+Mission Control and Stage Manager — drawn grey
 with a bar struck through. They are reminders, not buttons; clicking one says
 what it will be and which phase it belongs to.
 
@@ -158,6 +159,30 @@ omarchy-macifier dock placeholders on
 They come from `~/.local/share/macifier/dock-placeholders.json`, re-read on
 every poll, so editing that file needs no shell restart. Delete a row the moment
 the real thing ships.
+
+### Calendar
+
+A Mac keeps Calendar in the dock. We have not built one and should not:
+[Chronica](https://github.com/promaaa/sync-calendar-omarchy) already syncs
+Google, iCloud, Proton, Outlook, Nextcloud, Fastmail and plain `.ics`, and it is
+better than anything we would write.
+
+```bash
+omarchy plugin add https://github.com/promaaa/sync-calendar-omarchy.git --enable --yes
+omarchy-macifier dock calendar on
+```
+
+The tile appears only when Chronica is **enabled**, and disappears when it is
+not — it is polled, so installing or removing Chronica needs no shell restart.
+We own no calendar here; the tile is a second way in to someone else's, and it
+works only because Chronica exposes an `IpcHandler` on `promaa.clock`.
+
+Two things worth knowing before you wonder whether it is broken:
+
+- **The agenda opens at the bar, not above the tile.** It is Chronica's popout
+  and it anchors to its own bar widget. We ask; we do not place it.
+- **Chronica is a bar widget**, and it replaces Omarchy's clock. That is its
+  design, not a side effect of ours — see its README for the placement step.
 
 ### Trash
 

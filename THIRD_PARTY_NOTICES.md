@@ -48,3 +48,25 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+---
+
+## Interoperated with, but not carried
+
+Nothing in this section is bundled, copied or redistributed, so nothing here
+carries a licence obligation for us. It is listed because "Macifier drives it"
+and "Macifier contains it" are different claims, and the notice file is the
+natural place someone checks which one applies.
+
+### Chronica — the dock's Calendar tile
+
+**What we use:** nothing of the code. The tile calls the `IpcHandler` Chronica
+publishes on `promaa.clock` (`open` / `close` / `toggle`), the same public
+entry point a keybinding would use. Chronica is installed by the user, from
+upstream, through `omarchy plugin add`; if it is absent or disabled the tile
+does not appear.
+
+**Author:** promaaa
+**Project:** Chronica (`promaa.clock`)
+**Source:** https://github.com/promaaa/sync-calendar-omarchy
+**Licence:** MIT — theirs, and it stays with their repository.

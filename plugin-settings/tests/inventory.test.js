@@ -152,6 +152,27 @@ test("Settings.qml renders every tag the inventory uses", () => {
   }
 });
 
+// `dock <id>` with no verb pins an app by that name, so a row invoking a dock
+// subcommand the installed CLI does not know does not fail — it silently pins a
+// phantom app called "calendar". The CLI reserves those words precisely so that
+// cannot happen; this holds the inventory to the same list.
+test("a dock row names a subcommand the CLI reserves", () => {
+  const cliPath = path.join(__dirname, "..", "..", "bin", "omarchy-macifier");
+  const cli = fs.readFileSync(cliPath, "utf8");
+  const m = cli.match(/^DOCK_RESERVED=\(([^)]*)\)/m);
+  assert.ok(m, "bin/omarchy-macifier no longer declares DOCK_RESERVED");
+  const reserved = new Set(m[1].trim().split(/\s+/));
+
+  for (const { row } of allRows) {
+    if (!row.action || !row.action.run) continue;
+    const [verb, sub] = row.action.run;
+    if (verb !== "dock" || !sub) continue;
+    assert.ok(reserved.has(sub),
+      `row "${row.label}" runs \`dock ${sub}\`, which the CLI does not reserve — ` +
+      `an older CLI would pin an app called "${sub}" instead`);
+  }
+});
+
 test("Macifier rows point at a real macifier verb", () => {
   for (const { row } of allRows) {
     if (row.tag !== "macifier" || !row.action || !row.action.run) continue;

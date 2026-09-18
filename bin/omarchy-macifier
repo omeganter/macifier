@@ -8,6 +8,7 @@
 #   omarchy-macifier dock <id> [add|remove|toggle]   pin or unpin an app
 #   omarchy-macifier dock placeholders [list|on|off] the "not built yet" tiles
 #   omarchy-macifier dock trash [open|empty|on|off]  the system trash tile
+#   omarchy-macifier dock calendar [open|on|off]     the Chronica calendar tile
 #   omarchy-macifier panel [open|keys|dock]          summon the panel
 #   omarchy-macifier settings [open|pane <id>]       the System Settings window
 #
@@ -155,13 +156,65 @@ dock_trash_status_json() {
     "$(dock_trash_count)"
 }
 
+# --- calendar ----------------------------------------------------------------
+# A Mac keeps Calendar in the dock. We have not built one and should not:
+# promaaa's Chronica already syncs Google, CalDAV, JMAP and plain .ics, and it
+# is a *bar widget* — it replaces Omarchy's clock and hangs its agenda off it.
+#
+# So this tile owns no calendar. It is a second way in to someone else's, and
+# it works only because Chronica exposes an IpcHandler on `promaa.clock` with
+# open/close/toggle. Without that there would be nothing to click and we would
+# have left the row grey.
+#
+# Two consequences worth saying out loud rather than discovering:
+#   - The agenda opens anchored to the bar widget, not above the dock tile.
+#     It is Chronica's popout; we only ask for it.
+#   - Chronica must be enabled as a bar widget for the panel to exist at all.
+#     `available` is that check, and the tile stays hidden until it passes.
+CALENDAR_OFF="$STATE/dock.calendar.off"
+CALENDAR_PLUGIN="promaa.clock"
+
+dock_calendar_shown() { [[ ! -f $CALENDAR_OFF ]]; }
+
+# Enabled, not merely installed: a disabled plugin loads no QML, so its
+# IpcHandler is not registered and `toggle` would fail silently.
+dock_calendar_available() {
+  command -v omarchy >/dev/null 2>&1 || return 1
+  omarchy plugin list 2>/dev/null | awk -v id="$CALENDAR_PLUGIN" '
+    $1 == id { found = ($2 == "enabled") } END { exit found ? 0 : 1 }
+  '
+}
+
+dock_calendar_set() {
+  mkdir -p "$STATE"
+  case "${1:-toggle}" in
+    on)     rm -f "$CALENDAR_OFF" ;;
+    off)    touch "$CALENDAR_OFF" ;;
+    toggle) if dock_calendar_shown; then touch "$CALENDAR_OFF"; else rm -f "$CALENDAR_OFF"; fi ;;
+    *) echo "usage: omarchy-macifier dock calendar [status|open|on|off|toggle]" >&2; exit 1 ;;
+  esac
+}
+
+# -q so a dock click on a shell that has since dropped the plugin is a no-op
+# rather than an error the user never asked to see.
+dock_calendar_open() {
+  dock_calendar_available || return 0
+  omarchy-shell -q "$CALENDAR_PLUGIN" toggle
+}
+
+dock_calendar_status_json() {
+  printf '{"shown":%s,"available":%s}\n' \
+    "$(dock_calendar_shown && echo true || echo false)" \
+    "$(dock_calendar_available && echo true || echo false)"
+}
+
 # `dock <id>` with no verb pins by default, which makes every word a potential
 # app id — so a subcommand this version does not know becomes a pinned app
 # called "placeholders". That is exactly what an older CLI did when a newer
 # dock polled it. Reserve the verbs on this side, and have the dock call the
 # explicit `placeholders list` form, which every older version rejects without
 # writing anything.
-DOCK_RESERVED=(apps list reset placeholders trash)
+DOCK_RESERVED=(apps calendar launchpad list reset placeholders trash)
 
 dock_set() {
   local id="$1" action="${2:-toggle}" r
@@ -644,6 +697,16 @@ case "${1:-status}" in
                        empty)         dock_trash_available && gio trash --empty || true ;;
                        on|off|toggle) dock_trash_set "$2" ;;
                        *) echo "usage: omarchy-macifier dock trash [status|count|open|empty|on|off|toggle]" >&2; exit 1 ;;
+                     esac ;;
+             calendar)
+                     # Same explicit-verb guard as the trash and placeholder
+                     # polls: a CLI older than this must refuse rather than pin
+                     # an app called "calendar".
+                     case "${2:-status}" in
+                       status)        dock_calendar_status_json ;;
+                       open)          dock_calendar_open ;;
+                       on|off|toggle) dock_calendar_set "$2" ;;
+                       *) echo "usage: omarchy-macifier dock calendar [status|open|on|off|toggle]" >&2; exit 1 ;;
                      esac ;;
              launchpad)
                      # The dock asks whether to draw the Launchpad tile. The

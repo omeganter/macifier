@@ -45,6 +45,18 @@ Item {
   property bool launchpadOn: false
   readonly property string launchpadGlyph: ""
 
+  // Calendar — promaaa's Chronica, not ours. A Mac keeps Calendar in the dock;
+  // Chronica is a *bar widget* that replaces the clock and hangs its agenda off
+  // itself, so this tile owns nothing and only asks, over the IpcHandler the
+  // plugin exposes on `promaa.clock`. Split the way the trash is: `shown` is
+  // what the user asked for, `available` is whether Chronica is there to ask.
+  // The agenda opens at the bar widget, not above this tile — it is Chronica's
+  // popout and it anchors to its own owner.
+  property bool calendarShown: false
+  property bool calendarAvailable: false
+  readonly property bool hasCalendar: calendarShown && calendarAvailable
+  readonly property string calendarGlyph: ""
+
   property int iconSize: Style.space(46)
   property int peek: 3
 
@@ -150,6 +162,9 @@ Item {
       seen[eid] = true
       out.push({ kind: "app", id: eid, pinned: false })
     }
+    // Before System Settings, so the tiles that are ours stay together at the
+    // end of the apps rather than splitting around the user's own.
+    if (hasCalendar) out.push({ kind: "calendar", id: "__calendar__" })
     // Always present, unlike Launchpad, which is an option the user can turn
     // off. The window is the dock's own settings as much as the system's, so a
     // dock with no way into it would be a dead end.
@@ -285,6 +300,13 @@ Item {
     launchpadToggleProc.running = true
   }
 
+  // Through the CLI rather than straight to `omarchy-shell`, unlike Launchpad:
+  // the plugin may have been disabled since the last poll, and the CLI is where
+  // that check already lives.
+  function toggleCalendar() {
+    run(["dock", "calendar", "open"])
+  }
+
   Process { id: focusProc; command: ["true"] }
   Process { id: launchProc; command: ["true"] }
   Process { id: actionProc; command: ["true"] }
@@ -414,6 +436,25 @@ Item {
     }
   }
 
+  // Polled rather than read once: Chronica can be installed, enabled or removed
+  // while the dock is up, and the tile should come and go without a restart.
+  Process {
+    id: calendarProc
+    command: ["omarchy-macifier", "dock", "calendar", "status"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        try {
+          var cal = JSON.parse(text)
+          root.calendarShown = !!cal.shown
+          root.calendarAvailable = !!cal.available
+        } catch (e) {
+          root.calendarShown = false
+          root.calendarAvailable = false
+        }
+      }
+    }
+  }
+
   Timer {
     interval: 2000; running: true; repeat: true; triggeredOnStart: true
     onTriggered: {
@@ -422,6 +463,7 @@ Item {
       if (!placeholdersProc.running) placeholdersProc.running = true
       if (!trashProc.running) trashProc.running = true
       if (!launchpadProc.running) launchpadProc.running = true
+      if (!calendarProc.running) calendarProc.running = true
     }
   }
 
@@ -679,9 +721,12 @@ Item {
               readonly property bool isTrash: modelData.kind === "trash"
               readonly property bool isLaunchpad: modelData.kind === "launchpad"
               readonly property bool isSettings: modelData.kind === "settings"
-              // The two tiles that are ours rather than an installed app: drawn
+              readonly property bool isCalendar: modelData.kind === "calendar"
+              // The tiles that are ours rather than an installed app: drawn
               // from a glyph, no .desktop entry to look up, no windows to list.
-              readonly property bool isGlyph: isLaunchpad || isSettings
+              // Calendar is here too — the plugin behind it is someone else's,
+              // but it has no .desktop entry and no window either.
+              readonly property bool isGlyph: isLaunchpad || isSettings || isCalendar
               readonly property bool isRunning: !isSep && !isPlanned && !isTrash && !isGlyph
                                                 && !!root.runningIds[modelData.id]
 
@@ -786,7 +831,8 @@ Item {
                   anchors.centerIn: parent
                   textFormat: Text.PlainText
                   text: tile.isLaunchpad ? root.launchpadGlyph
-                        : (tile.isSettings ? root.settingsGlyph : "")
+                        : (tile.isSettings ? root.settingsGlyph
+                        : (tile.isCalendar ? root.calendarGlyph : ""))
                   color: root.foreground
                   font.family: Style.font.family
                   font.pixelSize: Math.round(root.iconSize * 0.46)
@@ -872,6 +918,8 @@ Item {
                                                     : root.menuForApp(modelData.id)), x)
                   } else if (tile.isLaunchpad) {
                     root.toggleLaunchpad()
+                  } else if (tile.isCalendar) {
+                    root.toggleCalendar()
                   } else if (tile.isSettings) {
                     root.run(["settings", "open"])
                   } else if (tile.isTrash) {
@@ -893,10 +941,11 @@ Item {
                 anchors.bottomMargin: Style.space(4)
                 textFormat: Text.PlainText
                 text: tile.isLaunchpad ? "Launchpad"
+                      : (tile.isCalendar ? "Calendar"
                       : (tile.isSettings ? "System Settings"
                       : (tile.isTrash ? root.trashLabel()
                       : (tile.isPlanned ? modelData.name + " · not built yet"
-                                        : (tile.isSep ? "" : root.nameFor(modelData.id)))))
+                                        : (tile.isSep ? "" : root.nameFor(modelData.id))))))
                 color: root.foreground
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
