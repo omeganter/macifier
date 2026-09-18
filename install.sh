@@ -7,6 +7,50 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# --- refuse to publish a tree that is behind master --------------------------
+#
+# Everything below copies this working tree over the live system, and until now
+# the script had no notion of direction: being behind origin/master looked
+# exactly like being ahead of it. So running it from a stale checkout silently
+# reverted whatever someone else had already shipped.
+#
+# That is not hypothetical. On 2026-09-18 it removed a working feature from the
+# live CLI thirty seconds after that feature was installed, and disabled a
+# plugin with it. Nothing reported an error, because from this script's point of
+# view nothing had gone wrong.
+#
+# It refuses rather than warns. This runs unattended inside agent sessions, and
+# a warning nobody is watching is just a slower silence.
+
+force=no
+for arg in "$@"; do
+  case "$arg" in
+    --force) force=yes ;;
+    *) echo "usage: install.sh [--force]" >&2; exit 1 ;;
+  esac
+done
+
+if [[ $force == no ]] && git rev-parse --git-dir >/dev/null 2>&1; then
+  # Best effort. A machine with no network should still be able to install, and
+  # even a stale origin/master catches the case this exists for.
+  git fetch origin master --quiet 2>/dev/null || true
+
+  if git rev-parse --verify --quiet origin/master >/dev/null; then
+    if ! git merge-base --is-ancestor origin/master HEAD 2>/dev/null; then
+      {
+        echo "install.sh: refusing — this tree is behind origin/master."
+        echo
+        echo "Installing would revert work already on master:"
+        git log --oneline HEAD..origin/master
+        echo
+        echo "Rebase or reset onto origin/master first, or re-run with --force"
+        echo "if you really mean to publish an older build."
+      } >&2
+      exit 1
+    fi
+  fi
+fi
+
 install -Dm755 bin/omarchy-macifier "$HOME/.local/bin/omarchy-macifier"
 install -Dm755 bin/macifier-pods    "$HOME/.local/bin/macifier-pods"
 install -Dm644 plugin/manifest.json "$HOME/.config/omarchy/plugins/macifier/manifest.json"
