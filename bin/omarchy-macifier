@@ -773,7 +773,9 @@ option_off() {
       omarchy plugin disable local.macifier-dock >/dev/null 2>&1 || true
       reload ;;
     launchpad)
-      rm -f "$HYPR_DIR/macifier-launchpad.lua"
+      # Recents is a log of which apps were opened. Off means Launchpad stops
+      # recording, and it should not leave the record behind either.
+      rm -f "$HYPR_DIR/macifier-launchpad.lua" "$STATE/launchpad-recents.json"
       omarchy plugin disable local.macifier-launchpad >/dev/null 2>&1 || true
       reload ;;
     plugin) plugin_off "$n" "${2:-explicit}" ;;

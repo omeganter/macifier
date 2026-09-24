@@ -249,8 +249,16 @@ Launchpad tile at the front of the dock — where a Mac keeps it, second only to
 Finder, which we do not have. The tile appears only while `launchpad` is on, so
 the dock never offers a button for a plugin that is disabled.
 
-Type to filter. Arrow keys walk the grid and carry on across pages, so the
-selection never gets stuck at an edge. Enter launches, click launches, Escape
+It scrolls down, like the Apps view that replaced Launchpad in macOS 26:
+one list, two fingers to scroll, no pages. The scroll glides on after your
+fingers lift and stretches and springs back at either end, as on a Mac.
+
+The top row is **Recents**: the apps you last opened, however you opened them
+(dock, menu, keybinding or Launchpad itself). It is learned from Hyprland's
+window-open events and kept in `~/.local/state/macifier/launchpad-recents.json`.
+Nothing is recorded while `launchpad` is off, and turning it off deletes the
+file. Type to filter. Arrow keys walk the
+grid and the view follows, so the selection never gets stuck at an edge. Enter launches, click launches, Escape
 clears what you typed and a second Escape closes.
 
 The Mac key for this is F4, and we cannot use it: `mediakeys` makes the top row
@@ -288,8 +296,8 @@ gesture rather than an approximation.
 change it. libinput classifies two fingers as a scroll axis and only three or
 more as a swipe, so nothing in Hyprland ever sees a two-finger swipe. Its own
 log is blunt about it: `[2fg] GESTURE_EVENT_SCROLL_START`. That is why Omarchy's
-own commented examples only ever say `fingers = 3`, and why Launchpad reads page
-swipes as a wheel instead.
+own commented examples only ever say `fingers = 3`, and why Launchpad scrolls
+with two fingers instead of swiping.
 
 Mission Control and Exposé are plugins Macifier recommends rather than ships
 (see [docs/SETTINGS.md](docs/SETTINGS.md)). Those two gestures are best-effort:

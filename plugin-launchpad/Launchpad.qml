@@ -1,5 +1,6 @@
 import Quickshell
 import Quickshell.Io
+import Quickshell.Hyprland
 import Quickshell.Wayland
 import QtQuick
 import qs.Commons
@@ -14,7 +15,11 @@ import qs.Ui
 // It is also the cheapest of the big Mac surfaces to get right, because every
 // hard part was already solved next door: the dock resolves .desktop icons and
 // launches entries, and the switcher proved an overlay can hold exclusive
-// keyboard focus. What is left is layout and paging.
+// keyboard focus. What is left is layout and scrolling.
+//
+// It scrolls down, not sideways. macOS 26 retired paged Launchpad for the Apps
+// view: a row of recently opened apps on top, then everything else in one
+// continuous list read top to bottom.
 //
 // Deliberately not a fuzzy launcher. Omarchy's menu and Spotlight both already
 // do search-first; Launchpad's whole point is that you *look* rather than type,
@@ -25,8 +30,11 @@ Item {
   property bool opened: false
   property var allApps: []
   property string query: ""
+
+  // One index across Recents and the grid: 0..recents.length-1 is the Recents
+  // row, everything after is the grid. A single number is what lets the arrow
+  // keys cross from one to the other without either knowing about the other.
   property int index: 0
-  property int page: 0
 
   // The selection square means "Enter launches this", so it only appears
   // once the keyboard is actually in play. Showing it from the moment
@@ -35,10 +43,16 @@ Item {
   property bool keyboardNav: false
 
   // Filled from the window, so the grid adapts to the display instead of
-  // assuming the 7x5 a 16:10 Mac happens to use.
+  // assuming the 7x5 a 16:10 Mac happens to use. Rows is only how much of the
+  // list shows at once; the list itself scrolls.
   property int columns: 7
   property int rows: 5
-  readonly property int perPage: Math.max(1, columns * rows)
+
+  // Cell width carries the icon plus its label; 132 is the smallest that
+  // fits two lines of a long application name without clipping. The pitch
+  // adds the gap between tiles.
+  readonly property int cell: Style.space(132)
+  readonly property int pitch: cell + Style.space(10)
 
   readonly property color foreground: Color.foreground
   readonly property color background: Color.popups ? Color.popups.background : Color.background
@@ -46,7 +60,8 @@ Item {
   // Reading allApps and query inside the function is what makes this re-run
   // when either changes; QML tracks property reads during evaluation.
   readonly property var shown: root.filterApps()
-  readonly property int pageCount: Math.max(1, Math.ceil(shown.length / perPage))
+  readonly property var recents: root.recentApps()
+  readonly property int total: recents.length + shown.length
 
   function filterApps() {
     var q = String(query).trim().toLowerCase()
@@ -89,22 +104,155 @@ Item {
     return (d && d.length > 0) ? d : Quickshell.iconPath("application-x-executable", true)
   }
 
+  // --- recents ---------------------------------------------------------------
+  //
+  // The apps you last opened, newest first — however you opened them. Recording
+  // only Launchpad's own launches would miss the dock, the menu, Spotlight and
+  // every keybinding, which is most launches, and the row would be a list of
+  // what you happened to open *here*. So it listens to Hyprland instead: every
+  // new window names its class, and the class resolves to a desktop entry the
+  // same way the dock resolves it.
+  //
+  // Kept in Macifier's state directory so it survives a shell restart. Turning
+  // the `launchpad` option off disables this plugin, so nothing is recorded
+  // while it is off, and deletes the file, so nothing is left behind either.
+  property var recentIds: []
+  readonly property int recentsKept: 24
+
+  function recentApps() {
+    // Hidden while filtering: the results are what you are reading, and a
+    // row of unrelated apps above them would only push them down.
+    if (String(query).trim().length > 0) return []
+    var byId = ({})
+    for (var i = 0; i < allApps.length; i++) byId[allApps[i].id] = allApps[i]
+    var out = []
+    for (var j = 0; j < recentIds.length && out.length < columns; j++) {
+      var a = byId[recentIds[j]]
+      if (a) out.push(a)
+    }
+    return out
+  }
+
+  function noteOpened(id) {
+    if (!id) return
+    var next = [id]
+    for (var i = 0; i < recentIds.length && next.length < recentsKept; i++)
+      if (recentIds[i] !== id) next.push(recentIds[i])
+    // A second window of the app already at the front changes nothing, and
+    // rewriting the file for it would be a disk write per terminal tab.
+    if (recentIds.length > 0 && recentIds[0] === id && next.length === recentIds.length) return
+    recentIds = next
+    recentsFile.setText(JSON.stringify({ recent: next }) + "\n")
+  }
+
+  // Window class to desktop id — the dock's resolver, minus its fallback to
+  // the bare class. A window with no entry has nothing Launchpad could show.
+  function entryForClass(cls) {
+    var lc = String(cls || "").toLowerCase()
+    if (lc.length === 0) return ""
+    var tail = lc.indexOf(".") >= 0 ? lc.substring(lc.lastIndexOf(".") + 1) : lc
+    var host = ""
+    if (lc.indexOf("chrome-") === 0) {
+      host = lc.substring(7)
+      var cut = host.indexOf("__")
+      if (cut > 0) host = host.substring(0, cut)
+    }
+    var vals = (DesktopEntries.applications && DesktopEntries.applications.values) || []
+    var found = ""
+    for (var j = 0; j < vals.length; j++) {
+      var e = vals[j]
+      if (!e || e.noDisplay) continue
+      var id = String(e.id || "").replace(/\.desktop$/, "")
+      var idl = id.toLowerCase()
+      var sc = String(e.startupClass || "").toLowerCase()
+      if (sc === lc || idl === lc) return id
+      if (!found && idl === tail) found = id
+      if (!found && host.length > 0 &&
+          String(e.execString || e.command || "").toLowerCase().indexOf(host) >= 0) found = id
+    }
+    return found
+  }
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (!event || event.name !== "openwindow") return
+      // ADDRESS,WORKSPACE,CLASS,TITLE — the title may itself hold commas, the
+      // class cannot, so split no further than the class.
+      var parts = String(event.data || "").split(",")
+      if (parts.length < 3) return
+      root.noteOpened(root.entryForClass(parts[2]))
+    }
+  }
+
+  // Seeds the row from what is already open, so it is not empty on first use
+  // or after a reboot. Open windows go after what the file remembers, most
+  // recently focused first — they are running, but the file knows better
+  // which of them you opened last.
+  function seedFrom(ids) {
+    var next = recentIds.slice()
+    for (var i = 0; i < ids.length && next.length < recentsKept; i++)
+      if (ids[i] && next.indexOf(ids[i]) < 0) next.push(ids[i])
+    if (next.length === recentIds.length) return
+    recentIds = next
+    recentsFile.setText(JSON.stringify({ recent: next }) + "\n")
+  }
+
+  Process {
+    id: openWindowsProc
+    command: ["hyprctl", "-j", "clients"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var list = []
+        try { list = JSON.parse(text) } catch (e) { return }
+        list.sort(function(a, b) { return (a.focusHistoryID || 0) - (b.focusHistoryID || 0) })
+        var ids = []
+        for (var i = 0; i < list.length; i++) ids.push(root.entryForClass(list[i] && list[i].class))
+        root.seedFrom(ids)
+      }
+    }
+  }
+
+  // Seeding waits for the file either way, so what it remembers keeps its
+  // order ahead of whatever happens to be open.
+  FileView {
+    id: recentsFile
+    path: Quickshell.env("HOME") + "/.local/state/macifier/launchpad-recents.json"
+    printErrors: false
+    onLoaded: {
+      try {
+        var d = JSON.parse(text())
+        if (d && Array.isArray(d.recent)) root.recentIds = d.recent.map(String)
+      } catch (e) {
+        root.recentIds = []
+      }
+      openWindowsProc.running = true
+    }
+    onLoadFailed: openWindowsProc.running = true
+  }
+
+  // --- opening and launching -------------------------------------------------
+
   function open() {
     loadApps()
     query = ""
     index = 0
-    page = 0
     keyboardNav = false
     opened = true
+    scroller.toTop()
   }
 
   function close() { opened = false }
   function toggle() { if (opened) close(); else open() }
 
+  function appAt(i) {
+    if (i < recents.length) return recents[i]
+    return shown[i - recents.length]
+  }
+
   function launchAt(i) {
-    var list = shown
-    if (i < 0 || i >= list.length) return
-    var a = list[i]
+    if (i < 0 || i >= total) return
+    var a = appAt(i)
     // Same two-step the dock uses: the entry knows how to start itself, and
     // gtk-launch is the fallback for entries Quickshell could not model.
     if (a.entry && a.entry.execute) a.entry.execute()
@@ -112,80 +260,198 @@ Item {
     close()
   }
 
-  // Selection moves across the whole filtered list, not within a page, so
-  // walking off the right edge of one page lands on the left of the next —
-  // which is what makes the arrow keys feel continuous rather than modal.
-  function move(delta) {
-    var n = shown.length
-    if (n === 0) return
+  // --- keyboard --------------------------------------------------------------
+  //
+  // Left and right walk the one combined list, so the end of Recents runs
+  // straight into the first app. Up and down go by row and keep the column,
+  // with Recents as row -1 — which is what makes Down from a recent app land
+  // under it rather than wherever the flat index happens to fall.
+
+  function rowOf(i) {
+    return i < recents.length ? -1 : Math.floor((i - recents.length) / columns)
+  }
+
+  function colOf(i) {
+    return i < recents.length ? i : (i - recents.length) % columns
+  }
+
+  function indexAt(row, col) {
+    if (row < 0) return Math.min(col, recents.length - 1)
+    return Math.min(recents.length + row * columns + col, total - 1)
+  }
+
+  function select(i) {
+    if (total === 0) return
     keyboardNav = true
-    var next = index + delta
-    if (next < 0) next = 0
-    if (next > n - 1) next = n - 1
-    index = next
-    page = Math.floor(index / perPage)
+    index = Math.max(0, Math.min(total - 1, i))
+    scroller.reveal(index)
   }
 
-  function setPage(p) {
-    if (p < 0 || p > pageCount - 1) return
-    page = p
-    // Keep the selection on the page being looked at, or the highlight sits
-    // somewhere the user cannot see and Enter launches a surprise.
-    if (Math.floor(index / perPage) !== page) index = page * perPage
-  }
+  function step(delta) { select(index + delta) }
 
-  // --- two-finger swipe ------------------------------------------------------
-  //
-  // A two-finger swipe is not a gesture and cannot be bound like one. libinput
-  // reports two fingers as scroll axis events and only three or more as a swipe
-  // gesture, which is why Omarchy's own gesture config only ever speaks of
-  // `fingers = 3` and why no Hyprland bind can catch this. The overlay has to
-  // read it as a wheel, so it does.
-  //
-  // A trackpad sends a long stream of small deltas rather than one event, so a
-  // single swipe has to be accumulated to a threshold and then locked out
-  // briefly. Without the lockout one swipe flies through every page.
-  property double swipeAccum: 0
-  property double lastTurn: 0
-
-  readonly property int swipeThreshold: 220   // eighths of a degree
-  readonly property int swipeCooldownMs: 320
-
-  function swiped(dx, dy) {
-    if (pageCount < 2) return
-    // The dominant axis, so a slightly diagonal swipe still counts and a
-    // vertical one is not simply ignored — on a wide grid people swipe both
-    // ways and nothing happening reads as broken.
-    var d = Math.abs(dx) >= Math.abs(dy) ? dx : dy
-    if (d === 0) return
-
-    var now = Date.now()
-    if (now - lastTurn < swipeCooldownMs) return
-
-    // Direction reversing mid-swipe means a new intent, not a continuation.
-    if ((d > 0) !== (swipeAccum > 0)) swipeAccum = 0
-    swipeAccum += d
-
-    if (Math.abs(swipeAccum) < swipeThreshold) return
-    // One line to flip if this comes out backwards on your trackpad: the sign
-    // here is the whole mapping.
-    setPage(page + (swipeAccum > 0 ? 1 : -1))
-    swipeAccum = 0
-    lastTurn = now
+  function stepRows(delta) {
+    if (total === 0) return
+    var first = recents.length > 0 ? -1 : 0
+    var last = rowOf(total - 1)
+    var row = Math.max(first, Math.min(last, rowOf(index) + delta))
+    select(indexAt(row, colOf(index)))
   }
 
   function typed(ch) {
     keyboardNav = true
     query += ch
     index = 0
-    page = 0
+    scroller.toTop()
   }
 
   function backspace() {
     if (query.length === 0) return
     query = query.substring(0, query.length - 1)
     index = 0
-    page = 0
+    scroller.toTop()
+  }
+
+  // --- scrolling -------------------------------------------------------------
+  //
+  // A Mac scroll has three parts and a stock Flickable gives none of them to a
+  // trackpad on Wayland: the content tracks the fingers, keeps gliding after
+  // they lift, and stretches past the ends and springs back. macOS generates
+  // the glide itself, in the toolkit; libinput and Hyprland deliver only the
+  // finger movement and a stop. So the glide is generated here, per frame.
+  //
+  // The GridView is non-interactive and never sees the wheel. Every wheel event
+  // in the overlay lands in one handler and goes through this, so the grid, the
+  // card margins and the dimmed desktop all scroll identically.
+  QtObject {
+    id: scroller
+
+    // px per ms, in contentY terms. Positive moves down the list.
+    property real velocity: 0
+    property double lastEvent: 0
+
+    // macOS's normal deceleration rate, per millisecond — the number behind
+    // UIScrollView.DecelerationRate.normal. Lower stops sooner.
+    readonly property real friction: 0.998
+
+    readonly property real top: grid.originY
+    readonly property real bottom: grid.originY + Math.max(0, grid.contentHeight - grid.height)
+
+    function overshoot() {
+      if (grid.contentY < top) return grid.contentY - top
+      if (grid.contentY > bottom) return grid.contentY - bottom
+      return 0
+    }
+
+    function halt() {
+      glide.running = false
+      settle.stop()
+      velocity = 0
+    }
+
+    function toTop() {
+      halt()
+      grid.contentY = top
+    }
+
+    // Past an end the content moves less and less for the same finger travel,
+    // the rubber band that says "this is the end" without a hard stop.
+    function drag(dy) {
+      var over = overshoot()
+      if (over !== 0 && (dy > 0) === (over > 0)) {
+        var give = 1 - Math.min(1, Math.abs(over) / (grid.height * 0.4))
+        dy *= 0.5 * give * give
+      }
+      grid.contentY += dy
+    }
+
+    function trackpad(dy, now) {
+      glide.running = false
+      settle.stop()
+      var dt = now - lastEvent
+      var v = dt > 0 && dt < 100 ? dy / dt : 0
+      // Smoothed, because trackpad events arrive unevenly and the last one
+      // alone is a noisy reading of how fast the fingers were moving.
+      velocity = dt < 100 ? velocity * 0.4 + v * 0.6 : v
+      lastEvent = now
+      drag(dy)
+      fingersUp.restart()
+    }
+
+    // A mouse wheel has no fingers to track: each notch eases a row's worth,
+    // and quick notches add up rather than queueing.
+    function wheel(dy) {
+      halt()
+      var from = settle.running ? settle.to : grid.contentY
+      settle.to = Math.max(top, Math.min(bottom, from + dy))
+      settle.duration = 220
+      settle.easing.type = Easing.OutCubic
+      settle.start()
+    }
+
+    function release() {
+      fingersUp.stop()
+      if (Date.now() - lastEvent > 80) velocity = 0
+      if (Math.abs(velocity) > 0.05) glide.running = true
+      else springBack()
+    }
+
+    function springBack() {
+      velocity = 0
+      var over = overshoot()
+      if (over === 0) return
+      settle.to = over < 0 ? top : bottom
+      settle.duration = 380
+      settle.easing.type = Easing.OutQuint
+      settle.start()
+    }
+
+    function reveal(i) {
+      halt()
+      if (i < root.recents.length) { grid.contentY = top; return }
+      var before = grid.contentY
+      grid.positionViewAtIndex(i - root.recents.length, GridView.Contain)
+      // The top row of the grid is also the row under Recents; scrolling up to
+      // it should bring Recents back into view, not stop just short of it.
+      if (root.rowOf(i) === 0) grid.contentY = top
+      var after = grid.contentY
+      if (after === before) return
+      grid.contentY = before
+      settle.to = after
+      settle.duration = 180
+      settle.easing.type = Easing.OutCubic
+      settle.start()
+    }
+  }
+
+  // Hyprland reports the fingers lifting as an axis stop, which Qt does not
+  // always pass on. A short silence is the reliable signal.
+  Timer {
+    id: fingersUp
+    interval: 60
+    onTriggered: scroller.release()
+  }
+
+  FrameAnimation {
+    id: glide
+    running: false
+    onTriggered: {
+      var dt = Math.min(frameTime * 1000, 50)
+      grid.contentY += scroller.velocity * dt
+      if (scroller.overshoot() !== 0) {
+        // Past an end the glide brakes hard and hands over to the spring.
+        scroller.velocity *= Math.pow(0.8, dt / 16)
+        if (Math.abs(scroller.velocity) < 0.3) { running = false; scroller.springBack() }
+      } else {
+        scroller.velocity *= Math.pow(scroller.friction, dt)
+        if (Math.abs(scroller.velocity) < 0.02) { running = false; scroller.velocity = 0 }
+      }
+    }
+  }
+
+  NumberAnimation {
+    id: settle
+    target: grid
+    property: "contentY"
   }
 
   Process { id: launchProc; command: ["true"] }
@@ -199,6 +465,98 @@ Item {
     function hide(): void { root.close() }
   }
 
+  // One tile, for Recents and the grid alike, so the two rows cannot drift
+  // apart in size or look.
+  component AppTile: Item {
+    id: tile
+    required property var app
+    required property int absolute
+
+    readonly property bool selected: root.keyboardNav && absolute === root.index
+
+    width: root.pitch
+    height: root.pitch
+
+    Item {
+      anchors.centerIn: parent
+      width: root.cell
+      height: root.cell
+
+      Rectangle {
+        anchors.fill: parent
+        anchors.margins: Style.space(6)
+        radius: Style.space(16)
+        color: tile.selected ? Qt.rgba(1, 1, 1, 0.18)
+                             : (hover.hovered ? Qt.rgba(1, 1, 1, 0.09) : "transparent")
+      }
+
+      HoverHandler { id: hover }
+
+      Column {
+        anchors.centerIn: parent
+        spacing: Style.space(8)
+
+        // A plate under every icon. macOS needs none because every
+        // Mac icon ships its own filled artwork; a Linux icon theme
+        // is a mix, and the flat monochrome outlines in it — the
+        // Avahi browsers, HDAJackRetask — disappear into a dark card
+        // completely. The plate is what they sit on. It is faint
+        // enough that a full-bleed icon like Chromium or Discord
+        // still reads as itself rather than as a tile.
+        Item {
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: Style.space(72)
+          height: Style.space(72)
+
+          Rectangle {
+            anchors.centerIn: parent
+            width: Style.space(68)
+            height: width
+            radius: Style.space(18)
+            color: root.foreground
+            opacity: 0.07
+          }
+
+          Image {
+            anchors.centerIn: parent
+            width: Style.space(64)
+            height: Style.space(64)
+            fillMode: Image.PreserveAspectFit
+            sourceSize.width: 128
+            sourceSize.height: 128
+            source: root.iconFor(tile.app)
+            smooth: true
+          }
+        }
+
+        Text {
+          width: root.cell - Style.space(16)
+          horizontalAlignment: Text.AlignHCenter
+          textFormat: Text.PlainText
+          text: tile.app ? tile.app.name : ""
+          color: root.foreground
+          font.family: Style.font.family
+          font.pixelSize: Style.font.bodySmall
+          elide: Text.ElideRight
+          maximumLineCount: 2
+          wrapMode: Text.WordWrap
+        }
+      }
+
+      // Hovering deliberately does NOT move the selection. It used
+      // to, and the selection then stuck to whatever tile the pointer
+      // last crossed on its way to the search field or off the card
+      // — a highlight sitting on an app the pointer had long left.
+      // A Mac does not do this either: the highlight is the keyboard's
+      // and the pointer has its own, fainter one.
+      MouseArea {
+        anchors.fill: parent
+        onClicked: root.launchAt(tile.absolute)
+        hoverEnabled: true
+      }
+    }
+  }
+
   PanelWindow {
     id: panel
     visible: root.opened
@@ -209,14 +567,10 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
-    // Cell width carries the icon plus its label; 132 is the smallest that
-    // fits two lines of a long application name without clipping.
-    readonly property int cell: Style.space(132)
-
     // Leaves room for the card's padding and its margin from the screen edge,
     // so the grid never pushes the surface wider than the display.
-    onWidthChanged: root.columns = Math.max(4, Math.min(9, Math.floor((width - Style.space(240)) / cell)))
-    onHeightChanged: root.rows = Math.max(3, Math.min(6, Math.floor((height - Style.space(340)) / cell)))
+    onWidthChanged: root.columns = Math.max(4, Math.min(9, Math.floor((width - Style.space(240)) / root.cell)))
+    onHeightChanged: root.rows = Math.max(3, Math.min(6, Math.floor((height - Style.space(300)) / root.cell)))
 
     // The scrim. macOS blurs the desktop behind Launchpad; Hyprland can blur a
     // layer surface, but only if the user has blur on, so this has to read
@@ -244,17 +598,23 @@ Item {
       focus: true
       Keys.priority: Keys.BeforeItem
 
-      // Anywhere in the overlay, not just over the grid: on a Mac the swipe
+      // Anywhere in the overlay, not just over the grid: on a Mac the scroll
       // works wherever the pointer happens to be sitting.
+      //
+      // pixelDelta is what a trackpad reports and already carries the
+      // natural-scrolling direction libinput was set to. angleDelta is the
+      // mouse wheel, 120 per notch, scaled to about one row. A trackpad event
+      // with neither is the fingers lifting.
       WheelHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onWheel: function(event) {
-          // pixelDelta is what a trackpad actually reports; angleDelta is the
-          // mouse-wheel equivalent and the fallback. Scale the pixel figure so
-          // one threshold serves both.
-          var dx = event.pixelDelta.x !== 0 ? event.pixelDelta.x * 6 : event.angleDelta.x
-          var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y * 6 : event.angleDelta.y
-          root.swiped(dx, dy)
+          if (event.pixelDelta.y !== 0) {
+            scroller.trackpad(-event.pixelDelta.y, Date.now())
+          } else if (event.angleDelta.y !== 0) {
+            scroller.wheel(-event.angleDelta.y / 120 * root.pitch * 0.75)
+          } else if (event.pixelDelta.x === 0 && event.angleDelta.x === 0) {
+            scroller.release()
+          }
         }
       }
 
@@ -271,17 +631,17 @@ Item {
         } else if (event.key === Qt.Key_Backspace) {
           root.backspace(); event.accepted = true
         } else if (event.key === Qt.Key_Right) {
-          root.move(1); event.accepted = true
+          root.step(1); event.accepted = true
         } else if (event.key === Qt.Key_Left) {
-          root.move(-1); event.accepted = true
+          root.step(-1); event.accepted = true
         } else if (event.key === Qt.Key_Down) {
-          root.move(root.columns); event.accepted = true
+          root.stepRows(1); event.accepted = true
         } else if (event.key === Qt.Key_Up) {
-          root.move(-root.columns); event.accepted = true
+          root.stepRows(-1); event.accepted = true
         } else if (event.key === Qt.Key_PageDown) {
-          root.setPage(root.page + 1); event.accepted = true
+          root.stepRows(root.rows); event.accepted = true
         } else if (event.key === Qt.Key_PageUp) {
-          root.setPage(root.page - 1); event.accepted = true
+          root.stepRows(-root.rows); event.accepted = true
         } else if (event.text && event.text.length === 1 && event.text >= " ") {
           root.typed(event.text); event.accepted = true
         }
@@ -348,140 +708,97 @@ Item {
             }
           }
 
-          // The grid itself. One page at a time: slicing the filtered list is
-          // cheaper and far simpler than a flickable holding every application,
-          // and paging is the interaction the Mac actually offers.
-          Grid {
-            id: grid
+          // The grid itself: every match in one list, scrolled. A GridView
+          // only instantiates the rows in view, so a few hundred applications
+          // cost what a screenful does. The wrapper exists for the scroll
+          // indicator — a child of the GridView would scroll away with the icons.
+          Item {
             anchors.horizontalCenter: parent.horizontalCenter
-            columns: root.columns
-            spacing: Style.space(10)
+            width: grid.width
+            height: grid.height
 
-            // Sized to a whole page, not to this page's contents. A short last
-            // page would otherwise shrink the card under you — the window
-            // jumps as you turn to it and jumps back when you leave. macOS
-            // keeps the grid the same size and lets the last page be sparse,
-            // and it is right: the surface you are navigating should not move
-            // while you navigate it. The same applies while filtering, where
-            // every keystroke would otherwise resize the window.
-            width: root.columns * panel.cell + (root.columns - 1) * spacing
-            height: root.rows * panel.cell + (root.rows - 1) * spacing
+            GridView {
+              id: grid
+              cellWidth: root.pitch
+              cellHeight: root.pitch
+              clip: true
+              interactive: false
 
-            Repeater {
-              model: root.shown.slice(root.page * root.perPage, (root.page + 1) * root.perPage)
+              // Sized to a whole screen, not to what matches. A short list
+              // would otherwise shrink the card under you, and while filtering
+              // every keystroke would resize the window. macOS keeps the grid
+              // the same size and lets it be sparse, and it is right: the
+              // surface you are navigating should not move while you navigate it.
+              width: root.columns * cellWidth
+              height: root.rows * cellHeight
 
-              delegate: Item {
-                id: tile
+              model: root.shown
+
+              // Recents scroll with the list rather than staying pinned, as on
+              // the Mac: they are the first row of the view, not a toolbar.
+              header: Column {
+                width: grid.width
+                visible: root.recents.length > 0
+                height: visible ? implicitHeight : 0
+
+                Text {
+                  x: Style.space(16)
+                  text: "Recents"
+                  color: root.foreground
+                  opacity: 0.6
+                  font.family: Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                  font.weight: Font.DemiBold
+                }
+
+                Row {
+                  Repeater {
+                    model: root.recents
+                    delegate: AppTile {
+                      required property var modelData
+                      required property int index
+                      app: modelData
+                      absolute: index
+                    }
+                  }
+                }
+
+                // The line between what you used and what you have. Inset so
+                // it reads as a divider inside the grid, not a card edge.
+                Item {
+                  width: parent.width
+                  height: Style.space(20)
+                  Rectangle {
+                    anchors.centerIn: parent
+                    width: parent.width - Style.space(32)
+                    height: 1
+                    color: root.foreground
+                    opacity: 0.12
+                  }
+                }
+              }
+
+              delegate: AppTile {
                 required property var modelData
                 required property int index
-
-                readonly property int absolute: root.page * root.perPage + index
-                readonly property bool selected: root.keyboardNav && absolute === root.index
-
-                width: panel.cell
-                height: panel.cell
-
-                Rectangle {
-                  anchors.fill: parent
-                  anchors.margins: Style.space(6)
-                  radius: Style.space(16)
-                  color: tile.selected ? Qt.rgba(1, 1, 1, 0.18)
-                                       : (hover.hovered ? Qt.rgba(1, 1, 1, 0.09) : "transparent")
-                }
-
-                HoverHandler { id: hover }
-
-                Column {
-                  anchors.centerIn: parent
-                  spacing: Style.space(8)
-
-                  // A plate under every icon. macOS needs none because every
-                  // Mac icon ships its own filled artwork; a Linux icon theme
-                  // is a mix, and the flat monochrome outlines in it — the
-                  // Avahi browsers, HDAJackRetask — disappear into a dark card
-                  // completely. The plate is what they sit on. It is faint
-                  // enough that a full-bleed icon like Chromium or Discord
-                  // still reads as itself rather than as a tile.
-                  Item {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    width: Style.space(72)
-                    height: Style.space(72)
-
-                    Rectangle {
-                      anchors.centerIn: parent
-                      width: Style.space(68)
-                      height: width
-                      radius: Style.space(18)
-                      color: root.foreground
-                      opacity: 0.07
-                    }
-
-                    Image {
-                      anchors.centerIn: parent
-                      width: Style.space(64)
-                      height: Style.space(64)
-                      fillMode: Image.PreserveAspectFit
-                      sourceSize.width: 128
-                      sourceSize.height: 128
-                      source: root.iconFor(tile.modelData)
-                      smooth: true
-                    }
-                  }
-
-                  Text {
-                    width: panel.cell - Style.space(16)
-                    horizontalAlignment: Text.AlignHCenter
-                    textFormat: Text.PlainText
-                    text: tile.modelData.name
-                    color: root.foreground
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.bodySmall
-                    elide: Text.ElideRight
-                    maximumLineCount: 2
-                    wrapMode: Text.WordWrap
-                  }
-                }
-
-                // Hovering deliberately does NOT move the selection. It used
-                // to, and the selection then stuck to whatever tile the pointer
-                // last crossed on its way to the search field or the page dots
-                // — a highlight sitting on an app the pointer had long left.
-                // A Mac does not do this either: the highlight is the keyboard's
-                // and the pointer has its own, fainter one.
-                MouseArea {
-                  anchors.fill: parent
-                  onClicked: root.launchAt(tile.absolute)
-                  hoverEnabled: true
-                }
+                app: modelData
+                absolute: root.recents.length + index
               }
             }
-          }
 
-          // Page dots. A single dot tells you nothing, so on one page they go
-          // invisible — but they keep their space rather than being removed.
-          // Dropping the row shrinks the card the instant a filter narrows the
-          // results to one page, which is the same jump the fixed grid above
-          // exists to prevent, except it would fire on every keystroke.
-          Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Style.space(8)
-            opacity: root.pageCount > 1 ? 1 : 0
-
-            Repeater {
-              model: root.pageCount
-              delegate: Rectangle {
-                required property int index
-                width: Style.space(8)
-                height: Style.space(8)
-                radius: width / 2
-                color: root.foreground
-                opacity: index === root.page ? 0.9 : 0.35
-
-                MouseArea {
-                  anchors.fill: parent
-                  onClicked: root.setPage(index)
-                }
-              }
+            // A thin scroll indicator on the right edge, the only sign that
+            // the list goes on below. Gone when everything fits, and faint
+            // otherwise — macOS shows almost nothing here either.
+            Rectangle {
+              visible: grid.visibleArea.heightRatio < 1
+              anchors.right: parent.right
+              anchors.rightMargin: -Style.space(14)
+              width: Style.space(4)
+              radius: width / 2
+              y: Math.max(0, grid.visibleArea.yPosition) * grid.height
+              height: Math.min(grid.height - y, grid.visibleArea.heightRatio * grid.height)
+              color: root.foreground
+              opacity: glide.running || fingersUp.running || settle.running ? 0.5 : 0.25
             }
           }
 

@@ -437,7 +437,7 @@ easiest big Mac feature to build well, because we already have every piece: the
 dock resolves `.desktop` icons, the switcher already takes exclusive keyboard
 focus, and `omarchy-plugin-catalog`'s app enumeration is a solved problem.
 
-- Full-screen blurred overlay, grid of app icons, type to filter, pages, ⎋ to close.
+- Full-screen blurred overlay, grid of app icons, type to filter, scrolls down (macOS 26 Apps view), ⎋ to close.
 - Bound to F4 and to a dock tile.
 - Ship it as its own repo *and* submit it to the marketplace — it fills a hole the ecosystem has, and it is the strongest argument that Macifier is a contributor rather than a re-skinner.
 
