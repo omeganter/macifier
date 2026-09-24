@@ -33,6 +33,7 @@ Then click ` Macifier` in the bar and pick what you want.
 | `scroll` | Trackpad scrolls the macOS way | ● | ● |
 | `capslock` | Caps Lock works. Compose moves to right ⌘ | ● | ● |
 | `mediakeys` | F1–F12 do brightness and volume. Asks for your password | ● | ● |
+| `keynames` | ⌘K lists shortcuts as ⇧⌘↩, not `SUPER SHIFT + RETURN` | ● | ● |
 | `cmdkeys` | ⌘A ⌘Z ⌘F ⌘S and the rest | | ● |
 | `windowtitle` | Focused window's name in the bar | | ● |
 | `appswitcher` | ⌘Tab switches apps, not workspaces, with an icon bar | | ● |
@@ -73,6 +74,22 @@ Press **Edit** in the panel to switch keys one at a time. Two presets:
   those letters move to ⌃⌥ + the same letter, so ⌃⌥F is full screen.
 
 Every row says what it would displace before you turn it on.
+
+### Seeing them
+
+⌘K opens Omarchy's list of every shortcut, spelled the way Hyprland stores
+them: `SUPER SHIFT + RETURN`. `keynames` shows the same list in Mac key names,
+`⇧⌘↩`, with modifiers in the order macOS prints them, ⌃⌥⇧⌘. Media keys get
+their names (Volume Up, Brightness Down) instead of `XF86AudioRaiseVolume`.
+
+Only the wording changes. The list, its order and what picking a row does
+all come from Omarchy's own script, so new Omarchy bindings appear without
+Macifier knowing about them. If `cmdkeys` has taken ⌘K, the list follows
+Keybindings to ⌃⌥K.
+
+```bash
+macifier-keybindings --print   # the same list, in a terminal
+```
 
 In terminals these do nothing. Ctrl+Z suspends a job, Ctrl+D closes the shell.
 Sending those would be worse than doing nothing.

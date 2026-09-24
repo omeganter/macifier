@@ -31,6 +31,7 @@ OPTIONS=(
   "scroll|hypr|Trackpad scrolls in the macOS direction"
   "capslock|hypr|Caps Lock works as Caps Lock, not Compose"
   "mediakeys|root|F1-F12 do brightness/volume directly, Fn for F-keys"
+  "keynames|hypr|Keybindings screen (Super+K) shows Mac key names"
   "windowtitle|bar|Focused window's name shown in the bar"
   "cmdkeys|keys|Command-key shortcuts (configurable key by key)"
   "appswitcher|switcher|Command+Tab switches apps, not workspaces"
@@ -379,8 +380,8 @@ print(json.dumps({"apps": rows}))
 PYEOF
 }
 
-MINIMAL=(scroll capslock mediakeys)
-FULL=(scroll capslock mediakeys windowtitle cmdkeys appswitcher dock launchpad gestures)
+MINIMAL=(scroll capslock mediakeys keynames)
+FULL=(scroll capslock mediakeys keynames windowtitle cmdkeys appswitcher dock launchpad gestures)
 
 # --- the Command-key table ---------------------------------------------------
 # letter|mac label|group|displaced Omarchy binding|Lua dispatcher for it

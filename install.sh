@@ -53,6 +53,7 @@ fi
 
 install -Dm755 bin/omarchy-macifier "$HOME/.local/bin/omarchy-macifier"
 install -Dm755 bin/macifier-pods    "$HOME/.local/bin/macifier-pods"
+install -Dm755 bin/macifier-keybindings "$HOME/.local/bin/macifier-keybindings"
 install -Dm644 plugin/manifest.json "$HOME/.config/omarchy/plugins/macifier/manifest.json"
 install -Dm644 plugin/Widget.qml    "$HOME/.config/omarchy/plugins/macifier/Widget.qml"
 install -Dm644 plugin-switcher/manifest.json "$HOME/.config/omarchy/plugins/macifier-switcher/manifest.json"

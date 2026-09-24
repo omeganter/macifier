@@ -36,6 +36,7 @@ Panel {
     "scroll":      "Natural scrolling",
     "capslock":    "Caps Lock key",
     "mediakeys":   "Media keys on F1-F12",
+    "keynames":    "Mac key names",
     "cmdkeys":     "Command key shortcuts",
     "windowtitle": "Window name in bar",
     "appswitcher": "⌘Tab switches apps",
@@ -47,6 +48,7 @@ Panel {
     "scroll":      "Trackpad scrolls the macOS way",
     "capslock":    "Caps Lock works, Compose moves to right ⌘",
     "mediakeys":   "Brightness and volume direct · asks for your password",
+    "keynames":    "⌘K lists shortcuts as ⇧⌘↩, not SUPER SHIFT + RETURN",
     "cmdkeys":     "⌘A ⌘Z ⌘N ⌘Q … tap Edit to choose",
     "windowtitle": "Show the focused window's name",
     "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces",
@@ -55,11 +57,11 @@ Panel {
     "gestures":    "3 fingers for spaces · up/down for Mission Control and Exposé · 4-finger pinch for Launchpad",
     // The only switch here that reaches outside Macifier: it installs and
     // enables somebody else's plugin. The hint says whose, because a switch
-    // that quietly fetches code from GitHub should not look like the eight
+    // that quietly fetches code from GitHub should not look like the nine
     // above it, which only move files around inside this machine.
     "trackpad":    "Pointer speed, tap to click, acceleration · installs David Fano's Trackpad Plus"
   })
-  readonly property var order: ["scroll", "capslock", "mediakeys", "cmdkeys", "appswitcher", "dock", "launchpad", "gestures", "trackpad", "windowtitle"]
+  readonly property var order: ["scroll", "capslock", "mediakeys", "keynames", "cmdkeys", "appswitcher", "dock", "launchpad", "gestures", "trackpad", "windowtitle"]
 
   // Every option the CLI reports — `order` only decides the order, never
   // membership. The panel used to iterate `order` itself, so an option added
