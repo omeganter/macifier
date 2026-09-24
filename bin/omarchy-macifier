@@ -39,6 +39,7 @@ OPTIONS=(
   "launchpad|launchpad|Full-screen grid of every installed application"
   "gestures|hypr|Trackpad gestures: spaces, Mission Control, Expose, Launchpad"
   "airpods|root|AirPods connect when you open the case or put one in"
+  "palm|root|A palm resting on the trackpad while you type does not move the pointer"
   "trackpad|plugin|Per-device trackpad tuning: pointer speed, tap to click, acceleration"
 )
 
@@ -463,6 +464,8 @@ opt_available() {
     # only fail, which is worse than saying it does not apply here.
     trackpad) command -v python3 >/dev/null && command -v hyprctl >/dev/null \
               && command -v timeout >/dev/null ;;
+    # Only where there is an Apple Silicon trackpad for the quirk to match.
+    palm) palm_device >/dev/null ;;
     *) true ;;
   esac
 }
@@ -572,6 +575,79 @@ airpods_off() {
   if grep -qF "$BT_MARK_OPEN" "$BT_CONF" 2>/dev/null; then
     priv /bin/sh -c "sed -i '/$BT_MARK_OPEN/,/$BT_MARK_CLOSE/d' '$BT_CONF' && systemctl restart bluetooth"
   fi
+}
+
+# --- palm ---------------------------------------------------------------------
+# libinput decides a touch is a palm when its contact is wider than
+# AttrPalmSizeThreshold. For Apple laptop trackpads it ships 1600, which on a
+# 14" M1 Pro lets the heel of the hand resting on the trackpad's lower corners
+# through as a finger: the pointer jumps mid-sentence. Disable-while-typing is
+# already on in Omarchy and does not help, because it only ignores touches
+# that *start* during typing, and a resting palm started before.
+#
+# 1000 is what Trackpad Plus PR #15 settled on after testing an Intel MacBook
+# and an M2 Air. That PR matches those two trackpads (applespi's 0x06CB vendor,
+# and the MTP name) but not this one: the M1/M1 Pro/M1 Max trackpad is on the
+# SPI bus under Apple's own vendor id, 0x05AC, named "Apple SPI Trackpad". The
+# block below covers it, and M2-and-later MTP trackpads the same way.
+#
+# /etc/libinput/local-overrides.quirks is the one file libinput reads for local
+# changes, and others may write it too — Trackpad Plus will once #15 lands. So,
+# as with bluetooth's main.conf, ours is a marked block: added whole, removed
+# whole, and nothing else in the file is touched. libinput reads quirks when it
+# starts, so this takes effect at the next login.
+PALM_QUIRKS="/etc/libinput/local-overrides.quirks"
+PALM_MARK_OPEN="# >>> macifier palm >>>"
+PALM_MARK_CLOSE="# <<< macifier palm <<<"
+PALM_SIZE=1000
+
+# The event node of an Apple Silicon trackpad, if this machine has one:
+# SPI bus (0x1c) with Apple's vendor id, or an MTP-attached Apple trackpad.
+palm_device() {
+  local d name bus vendor
+  for d in /sys/class/input/event*/device; do
+    name="$(cat "$d/name" 2>/dev/null)" || continue
+    [[ $name == *[Tt]rackpad* || $name == *[Tt]ouchpad* ]] || continue
+    bus="$(cat "$d/id/bustype" 2>/dev/null)"; vendor="$(cat "$d/id/vendor" 2>/dev/null)"
+    if [[ $vendor == 05ac && ( $bus == 001c || $name == *MTP* ) ]]; then
+      echo "/dev/input/$(basename "$(dirname "$d")")"; return 0
+    fi
+  done
+  return 1
+}
+
+palm_is_on() { grep -qF "$PALM_MARK_OPEN" "$PALM_QUIRKS" 2>/dev/null; }
+
+palm_on() {
+  palm_is_on && return 0
+  local block
+  block="$(cat <<EOF
+$PALM_MARK_OPEN
+# Added by omarchy-macifier (option palm). Turning the option off removes
+# this block and nothing else. Lower is stricter; libinput ships 1600.
+[Macifier Apple Silicon Touchpad (SPI) palm]
+MatchUdevType=touchpad
+MatchBus=spi
+MatchVendor=0x05AC
+AttrPalmSizeThreshold=$PALM_SIZE
+
+[Macifier Apple Silicon Touchpad (MTP) palm]
+MatchUdevType=touchpad
+MatchName=*Apple*MTP*
+AttrPalmSizeThreshold=$PALM_SIZE
+$PALM_MARK_CLOSE
+EOF
+)"
+  priv /bin/sh -c "mkdir -p /etc/libinput && printf '%s\n' \"\$1\" >> '$PALM_QUIRKS'" sh "$block"
+  echo "Palm rejection is set. It takes effect the next time you log in."
+}
+
+palm_off() {
+  palm_is_on || return 0
+  # The file is removed only if our block was all that was in it, so a user's
+  # own overrides — or Trackpad Plus's — survive this switch.
+  priv /bin/sh -c "sed -i '/$PALM_MARK_OPEN/,/$PALM_MARK_CLOSE/d' '$PALM_QUIRKS' && { grep -q '[^[:space:]]' '$PALM_QUIRKS' || rm -f '$PALM_QUIRKS'; }"
+  echo "Palm rejection is back to libinput's default. It takes effect the next time you log in."
 }
 
 # --- the one option that touches state we do not own -------------------------

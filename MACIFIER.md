@@ -40,10 +40,19 @@ Then click ` MAC` in the bar and pick what you want.
 | `dock` | Auto-hiding dock of favourite apps along the bottom | | ● |
 | `launchpad` | Every installed app in a full-screen grid | | ● |
 | `gestures` | Mac trackpad gestures: spaces, Mission Control, Exposé, Launchpad | | ● |
+| `palm` | A palm resting on the trackpad while you type no longer moves the pointer. Asks for your password, applies at next login | | |
 | `trackpad` | Pointer speed, tap to click and acceleration, per device. Installs [Trackpad Plus](https://github.com/davefano/omarchy-trackpad-plus) | | |
 
 Options are independent. Presets just set a group, so you can flip any one
 afterwards and the rest stay put.
+
+`palm` fixes the pointer jumping when the heel of your hand rests on the
+trackpad while you type. libinput already tells palms from fingers by contact
+size; it just ships a threshold too lenient for the 14" M1 Pro. The option
+tightens it from 1600 to 1000 in a marked block in
+`/etc/libinput/local-overrides.quirks`, and turning it off removes that block
+and nothing else. It only appears on Apple Silicon trackpads, and it is in no
+preset yet: it has been tried on one machine.
 
 `trackpad` is in no preset on purpose. It is the one option that fetches code
 from outside this repository, and a preset that quietly installed somebody

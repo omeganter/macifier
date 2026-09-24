@@ -42,7 +42,8 @@ Panel {
     "appswitcher": "⌘Tab switches apps",
     "dock":        "Dock",
     "launchpad":   "Launchpad",
-    "gestures":    "Trackpad gestures"
+    "gestures":    "Trackpad gestures",
+    "palm":        "Ignore palm while typing"
   })
   readonly property var hints: ({
     "scroll":      "Trackpad scrolls the macOS way",
@@ -55,6 +56,7 @@ Panel {
     "dock":        "Auto-hiding app bar along the bottom · tap Edit to choose",
     "launchpad":   "Every app in a grid · ⌘⌥A, or the dock tile",
     "gestures":    "3 fingers for spaces · up/down for Mission Control and Exposé · 4-finger pinch for Launchpad",
+    "palm":        "A resting palm no longer moves the pointer · asks for your password · applies at next login",
     // The only switch here that reaches outside Macifier: it installs and
     // enables somebody else's plugin. The hint says whose, because a switch
     // that quietly fetches code from GitHub should not look like the nine
