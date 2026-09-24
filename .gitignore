@@ -4,3 +4,4 @@
 
 # Claude Code scratch state, not part of the project
 .claude/
+__pycache__/
