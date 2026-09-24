@@ -384,6 +384,45 @@ Nautilus, so Omarchy owns the explanation even though it doesn't own the code.
 
 ---
 
+## TD-008 — Closing the lid does not stop the battery draining
+
+**Status:** NEW · **Severity:** High (blocks daily-driver use) · **Affects:** every Apple Silicon install
+**Layer:** **Kernel (linux-asahi)** — not config, and not Omarchy.
+
+### Current
+Closing the lid *does* suspend. On 2026-09-19 00:51 logind logged `Lid closed` → `Suspending…`
+and the kernel logged `PM: suspend entry (s2idle)`. Nothing follows: no `suspend exit`, no
+resume. The next journal entry is a cold boot five days later, where `macsmc-reboot` reports
+`PMU logged 1 boot error(s) and 1 panic(s)`. pstore was empty.
+
+### Why config can't fix it
+- **s2idle is the only mode Apple Silicon has.** `/sys/power/mem_sleep` is `[s2idle]`, there is
+  no `/sys/power/disk`, and there's no swap. Hibernation isn't supported on Asahi, so
+  suspend-then-hibernate is off the table.
+- **Even working s2idle drains about 2%/h**, so a full battery is dead in 2–4 days
+  ([asahi-installer#252](https://github.com/AsahiLinux/asahi-installer/issues/252),
+  [linux#262](https://github.com/AsahiLinux/linux/issues/262), still open).
+- **No RTC wake alarm.** `rtc0` has no `wakealarm`, so "sleep, then power off after N hours"
+  can't be built either: nothing can wake the machine to do it.
+- **logind is configured correctly.** `HandleLidSwitch=suspend`, and only delay inhibitors are held.
+
+### Likely upstream bug
+[AsahiLinux/linux#510](https://github.com/AsahiLinux/linux/issues/510) (open PR). A secondary
+DCP with no display attached can fail the suspend path, keep raising mailbox IRQs that wake
+the SoC out of s2idle, and crash on resume. This machine's `dcpext` (`289c00000.dcp`)
+reports `connected:0` on every boot, which is exactly that setup.
+
+### What Macifier did about its own share
+`macifier-pods` ran a BLE scan in bursts, and a burst still open when the lid closed was left
+running inside bluetoothd. Now it holds a logind delay inhibitor, stops the scan on
+`PrepareForSleep`, and resumes after.
+
+### Evidence to collect next time
+Log battery `energy_now` on `PrepareForSleep` true and false. That gives drain per hour, and
+shows whether the machine resumed at all.
+
+---
+
 # Proposal: "Macifier" — an opt-in, reversible Mac-affinity mode
 
 **Status:** CONCEPT, 2026-09-14

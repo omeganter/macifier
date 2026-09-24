@@ -50,6 +50,8 @@ ADAPTER_IFACE = "org.bluez.Adapter1"
 DEVICE_IFACE = "org.bluez.Device1"
 PROPS_IFACE = "org.freedesktop.DBus.Properties"
 OM_IFACE = "org.freedesktop.DBus.ObjectManager"
+LOGIN1 = "org.freedesktop.login1"
+LOGIN1_MANAGER = "org.freedesktop.login1.Manager"
 
 APPLE_VENDOR_ID = 0x004C
 PROXIMITY_PAIRING = 0x07
@@ -304,6 +306,7 @@ class Pods:
         self.idle_seconds = int(cfg["idle_seconds"])
         self.scanning = False
         self.duty_timer = None
+        self.sleep_inhibitor = None
         self.triggers = {t.strip() for t in cfg["triggers"].split(",") if t.strip()}
         self.last_attempt = 0.0
         self.lid_counters = {}
@@ -618,6 +621,63 @@ class Pods:
         log("%s — taking them" % why)
         self.connect()
 
+    # --- sleep ---------------------------------------------------------------
+
+    def watch_sleep(self):
+        """Put the radio down before the machine sleeps, pick it up after.
+
+        BlueZ owns a discovery session, not us: when logind freezes this
+        process for suspend mid-burst, the scan it started keeps running in
+        bluetoothd with nobody left to stop it. On Apple Silicon sleep is
+        s2idle only, where every radio event is a chance to pull the SoC out
+        of its idle state, so an orphaned LE scan is drain we caused.
+
+        A delay inhibitor is what makes this reliable rather than a race: logind
+        waits for us to let go before it suspends, and we let go only once the
+        scan is stopped.
+        """
+        try:
+            self.logind = dbus.Interface(
+                self.bus.get_object(LOGIN1, "/org/freedesktop/login1"),
+                LOGIN1_MANAGER,
+            )
+        except dbus.DBusException as exc:
+            log("no logind, scanning without sleep awareness: %s" % exc)
+            return
+        self.bus.add_signal_receiver(
+            self.on_prepare_for_sleep,
+            dbus_interface=LOGIN1_MANAGER,
+            signal_name="PrepareForSleep",
+        )
+        self.take_sleep_inhibitor()
+
+    def take_sleep_inhibitor(self):
+        try:
+            self.sleep_inhibitor = self.logind.Inhibit(
+                "sleep", "Macifier", "Stop the AirPods scan before sleep", "delay"
+            )
+        except dbus.DBusException as exc:
+            log("could not take a sleep inhibitor: %s" % exc)
+            self.sleep_inhibitor = None
+
+    def release_sleep_inhibitor(self):
+        if self.sleep_inhibitor is not None:
+            os.close(self.sleep_inhibitor.take())
+            self.sleep_inhibitor = None
+
+    def on_prepare_for_sleep(self, going_to_sleep):
+        if going_to_sleep:
+            if self.duty_timer:
+                GLib.source_remove(self.duty_timer)
+                self.duty_timer = None
+            self.stop_discovery()
+            log("going to sleep — scan stopped")
+            self.release_sleep_inhibitor()
+        else:
+            self.take_sleep_inhibitor()
+            log("awake — scanning again")
+            self.duty_cycle()
+
     # --- lifecycle -----------------------------------------------------------
 
     def setup(self):
@@ -673,6 +733,7 @@ def build(verbose=False, dry_run=False, continuous=False):
 
 def cmd_watch(args):
     pods = build(verbose="--verbose" in args, dry_run="--dry-run" in args)
+    pods.watch_sleep()
     log("mode=%s threshold=%s dBm cooldown=%ss triggers=%s scan=%s/%ss"
         % (pods.cfg["mode"], pods.threshold, pods.cooldown,
            ",".join(sorted(pods.triggers)),
