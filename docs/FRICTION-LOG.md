@@ -417,9 +417,22 @@ reports `connected:0` on every boot, which is exactly that setup.
 running inside bluetoothd. Now it holds a logind delay inhibitor, stops the scan on
 `PrepareForSleep`, and resumes after.
 
-### Evidence to collect next time
-Log battery `energy_now` on `PrepareForSleep` true and false. That gives drain per hour, and
-shows whether the machine resumed at all.
+### Measured (2026-09-24, on battery, lid closed 1 h 30 min)
+| | Time | Battery | `energy_now` |
+|---|---|---|---|
+| Sleep | 18:29:49 | 100% | 57.83 Wh |
+| Wake | 19:59:42 | 98% | 55.29 Wh |
+
+The Mac used 2.54 Wh in 1.50 h: **1.7 W, about 2.9% of the battery per hour**. At that rate a
+full battery lasts about 1.4 days asleep. That's worse than the ~2%/h upstream measured on
+M2 Air. Macs on macOS lose about 1% per *day*.
+
+The resume was clean: `suspend exit`, no `pm_wakeup_irq` recorded, and pods stopped and
+restarted its scan as designed. So a normal night's sleep works. A multi-day sleep empties the
+battery even without a crash; the Sep 19 panic made it worse but isn't needed to explain it.
+
+**Advice until upstream moves:** shut down rather than close the lid for anything longer than
+about a day.
 
 ---
 
