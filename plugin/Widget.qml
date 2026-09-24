@@ -48,7 +48,7 @@ Panel {
     "scroll":      "Trackpad scrolls the macOS way",
     "capslock":    "Caps Lock works, Compose moves to right ⌘",
     "mediakeys":   "Brightness and volume direct · asks for your password",
-    "keynames":    "⌘K lists shortcuts as ⇧⌘↩, not SUPER SHIFT + RETURN",
+    "keynames":    "⌘K says Shift-Command-Return, not SUPER SHIFT + RETURN",
     "cmdkeys":     "⌘A ⌘Z ⌘N ⌘Q … tap Edit to choose",
     "windowtitle": "Show the focused window's name",
     "appswitcher": "Icon bar of apps, not workspaces · ⌘⌥Tab for workspaces",

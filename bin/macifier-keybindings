@@ -5,7 +5,7 @@
 #   macifier-keybindings --print    the list, for a terminal or a grep
 #
 # Omarchy's screen spells every shortcut the way Hyprland stores it:
-# "SUPER SHIFT + RETURN". A Mac user looks for ⇧⌘↩ and finds a vocabulary
+# "SUPER SHIFT + RETURN". A Mac user looks for Shift-Command-Return and finds a vocabulary
 # they have to translate on the way to the key. This shows the same list,
 # worded the way a Mac menu would word it.
 #
@@ -40,22 +40,29 @@ done
 # "SUPER SHIFT + B                     → Browser". Rewrite the combination in
 # the display field and pass the rest through untouched.
 #
-# Modifiers go in the order macOS prints them, ⌃⌥⇧⌘, with no separators: ⇧⌘B,
-# never ⌘+Shift+B. SUPER is ⌘ because that is the key Apple's keyboards send
-# it from; ALT is ⌥ for the same reason.
+# Written the way Apple's own support pages write shortcuts: words, joined by
+# hyphens, modifiers in the order macOS prints them — Control, Option, Shift,
+# Command. So "Shift-Command-B", never "Command+Shift+B". Words rather than
+# ⌃⌥⇧⌘ because the symbols are one more thing to learn, and the point of this
+# screen is to be read at a glance. SUPER is Command because that is the key
+# Apple's keyboards send it from; ALT is Option for the same reason.
 macify() {
   LC_ALL=C.UTF-8 gawk -F '\t' -v OFS='\t' '
     BEGIN {
-      n = split("CTRL:⌃ CONTROL:⌃ ALT:⌥ SHIFT:⇧ SUPER:⌘", pairs, " ")
-      for (i = 1; i <= n; i++) { split(pairs[i], kv, ":"); glyph[kv[1]] = kv[2] }
-      order[1] = "⌃"; order[2] = "⌥"; order[3] = "⇧"; order[4] = "⌘"
+      n = split("CTRL:1 CONTROL:1 ALT:2 SHIFT:3 SUPER:4", pairs, " ")
+      for (i = 1; i <= n; i++) { split(pairs[i], kv, ":"); rank[kv[1]] = kv[2] }
+      word[1] = "Control"; word[2] = "Option"; word[3] = "Shift"; word[4] = "Command"
 
-      # Keys with a Mac glyph or a Mac name. Anything not here keeps its own
-      # name, which for letters, digits and F-keys is already right.
-      n = split("RETURN=↩|ENTER=↩|KP_ENTER=⌤|TAB=⇥|SPACE=Space|ESCAPE=⎋|ESC=⎋|BACKSPACE=⌫|DELETE=⌦" \
-                "|LEFT=←|RIGHT=→|UP=↑|DOWN=↓|HOME=↖|END=↘|PRIOR=⇞|PAGE_UP=⇞|NEXT=⇟|PAGE_DOWN=⇟" \
-                "|COMMA=,|PERIOD=.|MINUS=-|EQUAL==|SLASH=/|BACKSLASH=\\|SEMICOLON=;|APOSTROPHE='"'"'" \
-                "|GRAVE=`|BRACKETLEFT=[|BRACKETRIGHT=]|PRINT=Print Screen|CAPS_LOCK=⇪" \
+      # Keys with a Mac name. Anything not here keeps its own name, which for
+      # letters, digits and F-keys is already right. Backspace is "Delete" on
+      # a Mac keyboard, and Delete is "Forward Delete".
+      n = split("RETURN=Return|ENTER=Return|KP_ENTER=Enter|TAB=Tab|SPACE=Space|ESCAPE=Escape|ESC=Escape" \
+                "|BACKSPACE=Delete|DELETE=Forward Delete" \
+                "|LEFT=Left Arrow|RIGHT=Right Arrow|UP=Up Arrow|DOWN=Down Arrow|HOME=Home|END=End" \
+                "|PRIOR=Page Up|PAGE_UP=Page Up|NEXT=Page Down|PAGE_DOWN=Page Down" \
+                "|COMMA=Comma|PERIOD=Period|MINUS=Minus|EQUAL=Equals|SLASH=Slash|BACKSLASH=Backslash" \
+                "|SEMICOLON=Semicolon|APOSTROPHE=Quote|GRAVE=Grave Accent|BRACKETLEFT=Left Bracket" \
+                "|BRACKETRIGHT=Right Bracket|PRINT=Print Screen|CAPS_LOCK=Caps Lock" \
                 "|LEFT MOUSE BUTTON=Click|RIGHT MOUSE BUTTON=Right Click|MIDDLE MOUSE BUTTON=Middle Click" \
                 "|MOUSE_DOWN=Scroll Down|MOUSE_UP=Scroll Up" \
                 "|XF86AUDIORAISEVOLUME=Volume Up|XF86AUDIOLOWERVOLUME=Volume Down|XF86AUDIOMUTE=Mute" \
@@ -63,7 +70,7 @@ macify() {
                 "|XF86AUDIONEXT=Next Track|XF86AUDIOPREV=Previous Track|XF86MONBRIGHTNESSUP=Brightness Up" \
                 "|XF86MONBRIGHTNESSDOWN=Brightness Down|XF86KBDBRIGHTNESSUP=Keyboard Brightness Up" \
                 "|XF86KBDBRIGHTNESSDOWN=Keyboard Brightness Down|XF86KBDLIGHTONOFF=Keyboard Light" \
-                "|XF86POWEROFF=Power|XF86EJECT=⏏|XF86CALCULATOR=Calculator|XF86TOUCHPADTOGGLE=Trackpad Toggle" \
+                "|XF86POWEROFF=Power|XF86EJECT=Eject|XF86CALCULATOR=Calculator|XF86TOUCHPADTOGGLE=Trackpad Toggle" \
                 "|XF86TOUCHPADON=Trackpad On|XF86TOUCHPADOFF=Trackpad Off", keys, "|")
       for (i = 1; i <= n; i++) {
         eq = index(keys[i], "=")
@@ -83,19 +90,15 @@ macify() {
 
       delete have
       m = split(mods, parts, " ")
-      for (i = 1; i <= m; i++) if (toupper(parts[i]) in glyph) have[glyph[toupper(parts[i])]] = 1
-      prefix = ""
-      for (i = 1; i <= 4; i++) if (order[i] in have) prefix = prefix order[i]
+      for (i = 1; i <= m; i++) if (toupper(parts[i]) in rank) have[rank[toupper(parts[i])]] = 1
+      out = ""
+      for (i = 1; i <= 4; i++) if (i in have) out = out word[i] "-"
 
       upper = toupper(key)
       if (upper in name) key = name[upper]
       else if (upper ~ /^XF86/) { key = substr(key, 5); gsub(/[A-Z][a-z]+/, " &", key); sub(/^ /, "", key) }
 
-      # A word after a glyph reads better with a space ("⌘ Click",
-      # "⌃⌥ Space"); a single character never does ("⇧⌘B").
-      sep = (prefix != "" && length(key) > 1) ? " " : ""
-
-      $1 = sprintf("%-20s → %s", prefix sep key, action)
+      $1 = sprintf("%-34s → %s", out key, action)
       print
     }'
 }

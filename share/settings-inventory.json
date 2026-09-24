@@ -109,7 +109,7 @@
           "tag": "macifier", "action": { "run": ["option", "appswitcher", "toggle"] } },
         { "label": "Keyboard Shortcuts — see all", "omarchy": "SUPER + K",
           "tag": "omarchy", "action": { "menu": "setup.keybindings" } },
-        { "label": "Keyboard Shortcuts — Mac key names", "omarchy": "⌘K shows ⇧⌘↩, not SUPER SHIFT + RETURN",
+        { "label": "Keyboard Shortcuts — Mac key names", "omarchy": "⌘K says Shift-Command-Return, not SUPER SHIFT + RETURN",
           "tag": "macifier", "action": { "run": ["option", "keynames", "toggle"] } },
         { "label": "Keyboard brightness", "omarchy": "omarchy-brightness-keyboard",
           "tag": "omarchy", "note": "Needs Apple's backlit keyboard; confirmed on this MacBook only." },

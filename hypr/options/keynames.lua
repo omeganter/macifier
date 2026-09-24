@@ -1,7 +1,7 @@
 -- Macifier option: keynames
 --
 -- Omarchy's keybindings screen (⌘K) spells shortcuts the way Hyprland stores
--- them — "SUPER SHIFT + RETURN" — and a Mac user reads ⇧⌘↩. This points the
+-- them — "SUPER SHIFT + RETURN" — and a Mac user reads Shift-Command-Return. This points the
 -- Keybindings key at macifier-keybindings, which shows the same list, runs the
 -- same bindings, and only changes the wording.
 --

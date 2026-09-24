@@ -209,7 +209,7 @@ a Mac user can change. The middle column is what Omarchy calls it.
 | Keyboard Shortcuts — app shortcuts (⌘S ⌘F …) | `cmdkeys`, per-key editor | **Macifier** (shipped) |
 | Keyboard Shortcuts — ⌘Tab | `appswitcher` | **Macifier** (shipped) |
 | Keyboard Shortcuts — see all bindings | `setup.keybindings` / `SUPER + K` | Omarchy |
-| Keyboard Shortcuts — shown as ⌘⌥⌃⇧ | `keynames` | **Macifier** (shipped) |
+| Keyboard Shortcuts — shown in Mac key names | `keynames` | **Macifier** (shipped) |
 | Input Sources (layouts) | `omarchy.keyboard-layout` widget, `/etc/vconsole.conf` | Omarchy |
 | Text Replacements | XCompose (`setup.config.xcompose`) | Omarchy (different model) |
 | Dictation | `install.ai.dictation`, voxtype | Omarchy |
