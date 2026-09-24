@@ -22,7 +22,7 @@ omarchy plugin enable local.macifier right
 omarchy restart shell
 ```
 
-Then click ` Macifier` in the bar and pick what you want.
+Then click ` MAC` in the bar and pick what you want.
 
 ---
 

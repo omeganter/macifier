@@ -186,6 +186,9 @@ Panel {
   // Coming back to a closed panel on the sub-view would be disorienting.
   onOpenedChanged: if (!opened) view = "main"
 
+  // A new page starts at its top, not wherever the last one was left.
+  onViewChanged: pageScroll.contentItem.contentY = 0
+
   visible: !vertical
   implicitWidth: visible ? barRow.implicitWidth + Style.space(16) : 0
   implicitHeight: barSize
@@ -217,7 +220,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.anyOn
         textFormat: Text.PlainText
-        text: root.preset === "full" ? "Macifier Full" : "Macifier"
+        text: root.preset === "full" ? "MAC Full" : "MAC"
         color: root.barForeground
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: Style.font.caption
@@ -233,6 +236,65 @@ Panel {
     }
   }
 
+  // "There is more below", said the way macOS says it. Overlay scroll bars
+  // stay hidden until you scroll, so on their own they give no hint at all;
+  // macOS flashes them once when a scrollable view appears, and fades the
+  // content into the edge it continues past. Both here: the bar shows for a
+  // second when the panel opens or changes page, and each fade shows only
+  // while there is content beyond its edge, so the bottom one leaves once you
+  // reach the end and the top one arrives once you have scrolled away from it.
+  component ScrollHint: Item {
+    id: hint
+    required property var view
+    required property var bar
+
+    readonly property var flick: view.contentItem
+    readonly property bool overflows: flick && flick.contentHeight > flick.height + 1
+    readonly property color ground: Color.popups.background
+    readonly property int fadeSize: Style.space(28)
+
+    function flash() {
+      if (!hint.overflows || !hint.view.visible) return
+      hint.bar.policy = ScrollBar.AlwaysOn
+      flashTimer.restart()
+    }
+
+    Timer {
+      id: flashTimer
+      interval: 1100
+      onTriggered: hint.bar.policy = ScrollBar.AsNeeded
+    }
+
+    // callLater: the page has to be laid out before it knows it overflows.
+    Connections {
+      target: root
+      function onOpenedChanged() { if (root.opened) Qt.callLater(hint.flash) }
+      function onViewChanged() { Qt.callLater(hint.flash) }
+    }
+
+    Rectangle {
+      anchors { left: parent.left; right: parent.right; top: parent.top }
+      height: hint.fadeSize
+      opacity: hint.overflows && !hint.flick.atYBeginning ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: 150 } }
+      gradient: Gradient {
+        GradientStop { position: 0.0; color: hint.ground }
+        GradientStop { position: 1.0; color: Qt.rgba(hint.ground.r, hint.ground.g, hint.ground.b, 0) }
+      }
+    }
+
+    Rectangle {
+      anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+      height: hint.fadeSize
+      opacity: hint.overflows && !hint.flick.atYEnd ? 1 : 0
+      Behavior on opacity { NumberAnimation { duration: 150 } }
+      gradient: Gradient {
+        GradientStop { position: 0.0; color: Qt.rgba(hint.ground.r, hint.ground.g, hint.ground.b, 0) }
+        GradientStop { position: 1.0; color: hint.ground }
+      }
+    }
+  }
+
   KeyboardPanel {
     id: panel
     anchorItem: anchor
@@ -245,306 +307,340 @@ Panel {
         : (root.view === "dock" ? dockCol.implicitHeight : keysCol.implicitHeight),
       Style.space(520))
 
-    // ---------------------------------------------------------------- main --
-    ColumnLayout {
-      id: mainCol
-      width: parent.width
-      visible: root.view === "main"
-      spacing: Style.space(10)
+    // Every page scrolls when it is taller than the card. The card is capped
+    // (and capped again by the screen), and without this whatever did not fit
+    // simply spilled out below it — drawn on the transparent window with no
+    // card behind it, unreadable and out of reach. The keys and dock lists keep
+    // their own inner scroll so their headers stay put; this is the outer one.
+    ScrollView {
+      id: pageScroll
+      anchors.fill: parent
+      clip: true
+      contentWidth: availableWidth
+      contentHeight: root.view === "main" ? mainCol.implicitHeight
+        : (root.view === "dock" ? dockCol.implicitHeight : keysCol.implicitHeight)
+      ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+      ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
-      PanelSectionHeader { text: "Presets"; Layout.fillWidth: true }
-
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-        Repeater {
-          model: [
-            { id: "off",     label: "Off" },
-            { id: "minimal", label: "Minimal" },
-            { id: "full",    label: "Full" }
-          ]
-          delegate: Button {
-            required property var modelData
-            Layout.fillWidth: true
-            text: modelData.label
-            bordered: true
-            selected: root.preset === modelData.id
-            onClicked: root.run(["preset", modelData.id])
-          }
-        }
-      }
-
-      PanelSeparator { Layout.fillWidth: true }
-      PanelSectionHeader { text: "Options"; Layout.fillWidth: true }
-
-      Repeater {
-        model: root.rows
-        delegate: RowLayout {
-          required property var modelData
-          Layout.fillWidth: true
-          spacing: Style.space(8)
-
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 0
-            Text {
-              Layout.fillWidth: true
-              textFormat: Text.PlainText
-              text: root.labels[modelData] || modelData
-              color: Color.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.body
-              elide: Text.ElideRight
-            }
-            Text {
-              Layout.fillWidth: true
-              textFormat: Text.PlainText
-              text: root.hintFor(modelData)
-              color: Qt.darker(Color.foreground, 1.5)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-            }
-          }
-
-          // Two options have something to drill into.
-          Button {
-            visible: modelData === "cmdkeys" || modelData === "dock"
-            text: "Edit"
-            bordered: true
-            onClicked: {
-              root.view = (modelData === "dock") ? "dock" : "keys"
-              root.refresh()
-            }
-          }
-
-          ToggleSwitch {
-            readonly property var entry: root.opts[modelData]
-            checked: entry !== undefined && entry.on === true
-            interactive: entry !== undefined && entry.available === true
-            opacity: interactive ? 1.0 : 0.4
-            // --from-panel tells the CLI a panel is open in front of it. It
-            // matters for options that enable a bar-widget plugin: the shell
-            // rebuilds the bar, this widget is destroyed with it, and the CLI
-            // summons the panel back once the replacement exists. Harmless for
-            // every other option, which never touches the bar.
-            onToggled: root.run(["option", modelData, checked ? "off" : "on", "--from-panel"])
-          }
-        }
-      }
-
-      PanelSeparator { Layout.fillWidth: true }
-
-      // The dock grew a System Settings tile; the panel never learned about it.
-      // That matters because the dock is itself an option: turn it off and the
-      // settings window has no door left anywhere in the shell, only
-      // `omarchy-macifier settings open` in a terminal. The bar widget is the
-      // one surface that is always there, so it keeps a way in — the mirror of
-      // the dock's own context menu, which ends in "Dock Settings…" and summons
-      // this panel.
-      //
-      // Not a row in Options above: those are toggles the CLI reports, and this
-      // is a door, not a switch. The panel closes behind it because the window
-      // is a full surface of its own and two settings UIs stacked on each other
-      // read as a bug rather than a hand-off.
-      Button {
-        Layout.fillWidth: true
-        text: "System Settings…"
-        bordered: true
-        onClicked: {
-          root.run(["settings", "open"])
-          root.close()
-        }
-      }
-    }
-
-    // ---------------------------------------------------------------- keys --
-    ColumnLayout {
-      id: keysCol
-      width: parent.width
-      visible: root.view === "keys"
-      spacing: Style.space(10)
-
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-        Button { text: "‹  Back"; bordered: true; onClicked: root.view = "main" }
-        Item { Layout.fillWidth: true }
-      }
-
-      PanelSectionHeader { text: "Keybindings"; Layout.fillWidth: true }
-
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-        Repeater {
-          model: [
-            { id: "none",    label: "None" },
-            { id: "minimal", label: "Minimal" },
-            { id: "full",    label: "Full Mac" }
-          ]
-          delegate: Button {
-            required property var modelData
-            Layout.fillWidth: true
-            text: modelData.label
-            bordered: true
-            selected: root.keysPreset === modelData.id
-            onClicked: root.run(["key", "preset", modelData.id])
-          }
-        }
-      }
-
-      Text {
-        Layout.fillWidth: true
-        textFormat: Text.PlainText
-        // Says the cost out loud, so nobody discovers it by losing a shortcut.
-        text: "Minimal claims only keys Omarchy leaves free. Full Mac also takes "
-            + "keys that hold window shortcuts — those move to ⌃⌥ + the same letter."
-        color: Qt.darker(Color.foreground, 1.5)
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
-
-      PanelSeparator { Layout.fillWidth: true }
-
-      // Nineteen rows do not fit a bar popup, so the list scrolls inside a
-      // fixed frame while the presets and the warning above it stay put.
-      ScrollView {
-        id: keyScroll
-        Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(keyList.implicitHeight, Style.space(240))
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
-
-      // Inside a ScrollView `parent` is the unbounded content item, so binding
-      // to availableWidth is what actually keeps rows (and their switches)
-      // within the visible frame.
+      // ---------------------------------------------------------------- main --
       ColumnLayout {
-        id: keyList
-        width: keyScroll.availableWidth
+        id: mainCol
+        width: pageScroll.availableWidth
+        visible: root.view === "main"
         spacing: Style.space(10)
 
-      Repeater {
-        model: root.keys
-        delegate: RowLayout {
-          required property var modelData
+        PanelSectionHeader { text: "Presets"; Layout.fillWidth: true }
+
+        RowLayout {
           Layout.fillWidth: true
           spacing: Style.space(8)
-
-          Text {
-            Layout.preferredWidth: Style.space(52)
-            textFormat: Text.PlainText
-            text: "⌘" + modelData.key
-            color: Color.foreground
-            font.family: root.bar ? root.bar.fontFamily : Style.font.family
-            font.pixelSize: Style.font.body
-          }
-
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 0
-            Text {
+          Repeater {
+            model: [
+              { id: "off",     label: "Off" },
+              { id: "minimal", label: "Minimal" },
+              { id: "full",    label: "Full" }
+            ]
+            delegate: Button {
+              required property var modelData
               Layout.fillWidth: true
-              textFormat: Text.PlainText
               text: modelData.label
-              color: Color.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.body
-              elide: Text.ElideRight
-            }
-            Text {
-              Layout.fillWidth: true
-              visible: modelData.group === "wm"
-              textFormat: Text.PlainText
-              text: "moves “" + modelData.displaces + "” to ⌃⌥" + modelData.key
-              color: Qt.darker(Color.foreground, 1.5)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
+              bordered: true
+              selected: root.preset === modelData.id
+              onClicked: root.run(["preset", modelData.id])
             }
           }
+        }
 
-          ToggleSwitch {
-            checked: modelData.on === true
-            onToggled: root.run(["key", modelData.key, checked ? "off" : "on"])
+        PanelSeparator { Layout.fillWidth: true }
+        PanelSectionHeader { text: "Options"; Layout.fillWidth: true }
+
+        Repeater {
+          model: root.rows
+          delegate: RowLayout {
+            required property var modelData
+            Layout.fillWidth: true
+            spacing: Style.space(8)
+
+            ColumnLayout {
+              Layout.fillWidth: true
+              spacing: 0
+              Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: root.labels[modelData] || modelData
+                color: Color.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.body
+                elide: Text.ElideRight
+              }
+              Text {
+                Layout.fillWidth: true
+                textFormat: Text.PlainText
+                text: root.hintFor(modelData)
+                color: Qt.darker(Color.foreground, 1.5)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+            }
+
+            // Two options have something to drill into.
+            Button {
+              visible: modelData === "cmdkeys" || modelData === "dock"
+              text: "Edit"
+              bordered: true
+              onClicked: {
+                root.view = (modelData === "dock") ? "dock" : "keys"
+                root.refresh()
+              }
+            }
+
+            ToggleSwitch {
+              readonly property var entry: root.opts[modelData]
+              checked: entry !== undefined && entry.on === true
+              interactive: entry !== undefined && entry.available === true
+              opacity: interactive ? 1.0 : 0.4
+              // --from-panel tells the CLI a panel is open in front of it. It
+              // matters for options that enable a bar-widget plugin: the shell
+              // rebuilds the bar, this widget is destroyed with it, and the CLI
+              // summons the panel back once the replacement exists. Harmless for
+              // every other option, which never touches the bar.
+              onToggled: root.run(["option", modelData, checked ? "off" : "on", "--from-panel"])
+            }
+          }
+        }
+
+        PanelSeparator { Layout.fillWidth: true }
+
+        // The dock grew a System Settings tile; the panel never learned about it.
+        // That matters because the dock is itself an option: turn it off and the
+        // settings window has no door left anywhere in the shell, only
+        // `omarchy-macifier settings open` in a terminal. The bar widget is the
+        // one surface that is always there, so it keeps a way in — the mirror of
+        // the dock's own context menu, which ends in "Dock Settings…" and summons
+        // this panel.
+        //
+        // Not a row in Options above: those are toggles the CLI reports, and this
+        // is a door, not a switch. The panel closes behind it because the window
+        // is a full surface of its own and two settings UIs stacked on each other
+        // read as a bug rather than a hand-off.
+        Button {
+          Layout.fillWidth: true
+          text: "System Settings…"
+          bordered: true
+          onClicked: {
+            root.run(["settings", "open"])
+            root.close()
           }
         }
       }
 
-      }
-      }
-    }
+      // ---------------------------------------------------------------- keys --
+      ColumnLayout {
+        id: keysCol
+        width: pageScroll.availableWidth
+        visible: root.view === "keys"
+        spacing: Style.space(10)
 
-    // ---------------------------------------------------------------- dock --
-    ColumnLayout {
-      id: dockCol
-      width: parent.width
-      visible: root.view === "dock"
-      spacing: Style.space(10)
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          Button { text: "‹  Back"; bordered: true; onClicked: root.view = "main" }
+          Item { Layout.fillWidth: true }
+        }
 
-      RowLayout {
-        Layout.fillWidth: true
-        spacing: Style.space(8)
-        Button { text: "\u2039  Back"; bordered: true; onClicked: root.view = "main" }
-        Item { Layout.fillWidth: true }
-        Button { text: "Reset"; bordered: true; onClicked: root.run(["dock", "reset"]) }
-      }
+        PanelSectionHeader { text: "Keybindings"; Layout.fillWidth: true }
 
-      PanelSectionHeader { text: "Dock apps"; Layout.fillWidth: true }
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          Repeater {
+            model: [
+              { id: "none",    label: "None" },
+              { id: "minimal", label: "Minimal" },
+              { id: "full",    label: "Full Mac" }
+            ]
+            delegate: Button {
+              required property var modelData
+              Layout.fillWidth: true
+              text: modelData.label
+              bordered: true
+              selected: root.keysPreset === modelData.id
+              onClicked: root.run(["key", "preset", modelData.id])
+            }
+          }
+        }
 
-      Text {
-        Layout.fillWidth: true
-        textFormat: Text.PlainText
-        text: "Pinned apps stay on the dock. Anything running shows up anyway, "
-            + "with a dot under it."
-        color: Qt.darker(Color.foreground, 1.5)
-        font.family: root.bar ? root.bar.fontFamily : Style.font.family
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
+        Text {
+          Layout.fillWidth: true
+          textFormat: Text.PlainText
+          // Says the cost out loud, so nobody discovers it by losing a shortcut.
+          text: "Minimal claims only keys Omarchy leaves free. Full Mac also takes "
+              + "keys that hold window shortcuts — those move to ⌃⌥ + the same letter."
+          color: Qt.darker(Color.foreground, 1.5)
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
 
-      PanelSeparator { Layout.fillWidth: true }
+        PanelSeparator { Layout.fillWidth: true }
 
-      ScrollView {
-        id: dockScroll
-        Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(dockList.implicitHeight, Style.space(240))
-        clip: true
-        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+        // Nineteen rows do not fit a bar popup, so the list scrolls inside a
+        // fixed frame while the presets and the warning above it stay put.
+        // The frame holds the list and its scroll hint together; the hint
+        // has to sit over the list, which a ColumnLayout will not allow.
+        Item {
+          Layout.fillWidth: true
+          Layout.preferredHeight: Math.min(keyList.implicitHeight, Style.space(240))
 
-        ColumnLayout {
-          id: dockList
-          width: dockScroll.availableWidth
-          spacing: Style.space(10)
+          ScrollView {
+            id: keyScroll
+            anchors.fill: parent
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+          // Inside a ScrollView `parent` is the unbounded content item, so binding
+          // to availableWidth is what actually keeps rows (and their switches)
+          // within the visible frame.
+          ColumnLayout {
+            id: keyList
+            width: keyScroll.availableWidth
+            spacing: Style.space(10)
 
           Repeater {
-            model: root.dockApps
+            model: root.keys
             delegate: RowLayout {
               required property var modelData
               Layout.fillWidth: true
               spacing: Style.space(8)
 
               Text {
-                Layout.fillWidth: true
+                Layout.preferredWidth: Style.space(52)
                 textFormat: Text.PlainText
-                text: modelData.name
+                text: "⌘" + modelData.key
                 color: Color.foreground
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.body
-                elide: Text.ElideRight
+              }
+
+              ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                Text {
+                  Layout.fillWidth: true
+                  textFormat: Text.PlainText
+                  text: modelData.label
+                  color: Color.foreground
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.body
+                  elide: Text.ElideRight
+                }
+                Text {
+                  Layout.fillWidth: true
+                  visible: modelData.group === "wm"
+                  textFormat: Text.PlainText
+                  text: "moves “" + modelData.displaces + "” to ⌃⌥" + modelData.key
+                  color: Qt.darker(Color.foreground, 1.5)
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                }
               }
 
               ToggleSwitch {
-                checked: modelData.pinned === true
-                onToggled: root.run(["dock", modelData.id, checked ? "remove" : "add"])
+                checked: modelData.on === true
+                onToggled: root.run(["key", modelData.key, checked ? "off" : "on"])
               }
             }
           }
+
+          }
+          }
+
+          ScrollHint { anchors.fill: keyScroll; view: keyScroll; bar: keyScroll.ScrollBar.vertical }
+        }
+      }
+
+      // ---------------------------------------------------------------- dock --
+      ColumnLayout {
+        id: dockCol
+        width: pageScroll.availableWidth
+        visible: root.view === "dock"
+        spacing: Style.space(10)
+
+        RowLayout {
+          Layout.fillWidth: true
+          spacing: Style.space(8)
+          Button { text: "\u2039  Back"; bordered: true; onClicked: root.view = "main" }
+          Item { Layout.fillWidth: true }
+          Button { text: "Reset"; bordered: true; onClicked: root.run(["dock", "reset"]) }
+        }
+
+        PanelSectionHeader { text: "Dock apps"; Layout.fillWidth: true }
+
+        Text {
+          Layout.fillWidth: true
+          textFormat: Text.PlainText
+          text: "Pinned apps stay on the dock. Anything running shows up anyway, "
+              + "with a dot under it."
+          color: Qt.darker(Color.foreground, 1.5)
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        PanelSeparator { Layout.fillWidth: true }
+
+        // The frame holds the list and its scroll hint together; the hint
+        // has to sit over the list, which a ColumnLayout will not allow.
+        Item {
+          Layout.fillWidth: true
+          Layout.preferredHeight: Math.min(dockList.implicitHeight, Style.space(240))
+
+          ScrollView {
+            id: dockScroll
+            anchors.fill: parent
+            clip: true
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+            ColumnLayout {
+              id: dockList
+              width: dockScroll.availableWidth
+              spacing: Style.space(10)
+
+              Repeater {
+                model: root.dockApps
+                delegate: RowLayout {
+                  required property var modelData
+                  Layout.fillWidth: true
+                  spacing: Style.space(8)
+
+                  Text {
+                    Layout.fillWidth: true
+                    textFormat: Text.PlainText
+                    text: modelData.name
+                    color: Color.foreground
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.body
+                    elide: Text.ElideRight
+                  }
+
+                  ToggleSwitch {
+                    checked: modelData.pinned === true
+                    onToggled: root.run(["dock", modelData.id, checked ? "remove" : "add"])
+                  }
+                }
+              }
+            }
+          }
+
+          ScrollHint { anchors.fill: dockScroll; view: dockScroll; bar: dockScroll.ScrollBar.vertical }
         }
       }
     }
+
+    ScrollHint { anchors.fill: pageScroll; view: pageScroll; bar: pageScroll.ScrollBar.vertical }
   }
 }
