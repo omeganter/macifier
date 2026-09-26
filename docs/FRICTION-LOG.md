@@ -434,6 +434,41 @@ battery even without a crash; the Sep 19 panic made it worse but isn't needed to
 **Advice until upstream moves:** shut down rather than close the lid for anything longer than
 about a day.
 
+### Overnight, with interrupt counts (2026-09-24 → 25)
+16 h 51 min asleep, 100% → 35%: **2.3 W, about 3.9%/h**. The resume was clean. Interrupts
+during sleep:
+
+| Source | Count | Rate |
+|---|---|---|
+| AOP mailbox (`293408000.mbox-recv`) | 218,827 | 3.6/s |
+| CPU-to-CPU wakeups (`IPI1`) | 214,083 | about the same |
+| Timer tick | 135,501 | 2.2/s |
+| NVMe, internal DCP, Wi-Fi, Bluetooth | 304, 144, 28, 4 | negligible |
+| Idle external DCP (`dcpext`) | 0 | — |
+
+The idle external DCP never fired, so #510 isn't the cause here.
+
+The AOP traffic is the ambient light sensor. `aop_als.rs` asks for a report every 200 ms at
+probe and never stops it, and none of `aop_als`, `aop_las` or `aop.rs` has suspend handling.
+Awake, unloading `aop_als` took the mailbox from 5.95/s to 0.15/s.
+
+**Don't `modprobe -r aop_als`.** The driver has no remove path and leaves its listener
+registered, so the next report oopses in `aop` `recv_message` (a paging fault into freed module
+memory). AOP messaging is then dead until reboot. To turn it off, blacklist it
+(`/etc/modprobe.d/macifier-no-als.conf`) and reboot. Nothing on Omarchy reads the sensor.
+
+### With the light sensor blacklisted (2026-09-25 → 26)
+Awake, the AOP mailbox fell to about 1.1/s. Asleep, it made no difference: the lid closed at
+87% (51.0 Wh) and the machine never woke. The battery went fully flat within 26.4 h, so the
+draw was **at least 1.9 W**. No PMU panic was logged this time.
+
+**Conclusion:** the light sensor's wakeups are a real bug, but not the drain. The drain is
+what #262 describes: s2idle leaves most of the SoC powered. That's core kernel work.
+
+### Decision
+Keep lid close as suspend, as on a Mac. Shutting down on battery was offered and declined.
+The blacklist stays, since it costs nothing.
+
 ---
 
 # Proposal: "Macifier" — an opt-in, reversible Mac-affinity mode
